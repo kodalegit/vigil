@@ -1,0 +1,7 @@
+[project]
+name = "vigil"
+version = "0.1.0"
+description = "Vigil is an autonomous regulatory monitoring and enterprise impact intelligence agent."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
