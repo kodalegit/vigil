@@ -1,0 +1,25 @@
+{
+  "criteria": {
+    "rubric_based_final_response_quality_v1": {
+      "threshold": 0.8,
+      "judgeModelOptions": {
+        "judgeModel": "gemini-2.5-flash",
+        "numSamples": 1
+      },
+      "rubrics": [
+        {
+          "rubricId": "relevance",
+          "rubricContent": {
+            "textProperty": "The response directly addresses EU AI Act impact analysis for SaaS AI governance controls."
+          }
+        },
+        {
+          "rubricId": "helpfulness",
+          "rubricContent": {
+            "textProperty": "The response includes what changed, why it matters, affected internal artifacts, recommended actions, and a human approval requirement."
+          }
+        }
+      ]
+    }
+  }
+}

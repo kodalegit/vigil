@@ -59,10 +59,10 @@ def demo() -> None:
     decision = asyncio.run(
         VigilOrchestrator().analyze(
             MonitoringInstruction(
-                query="e-invoicing compliance update",
-                jurisdiction="Kenya",
-                domain="tax",
-                sources=["https://example.com/mock-regulator-update"],
+                query="EU AI Act high-risk AI deployer obligations",
+                jurisdiction="European Union",
+                domain="AI governance",
+                sources=["https://artificialintelligenceact.eu/"],
             )
         )
     )

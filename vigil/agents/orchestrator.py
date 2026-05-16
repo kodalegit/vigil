@@ -31,12 +31,13 @@ class VigilOrchestrator:
         )
 
         is_actionable = bool(source_findings and enterprise_findings)
-        risk_level = RiskLevel.medium if is_actionable else RiskLevel.low
+        risk_level = RiskLevel.high if is_actionable else RiskLevel.low
         recommended_actions = []
         if is_actionable:
             recommended_actions = [
-                "Send a compliance impact alert to the configured review channel.",
-                "Request human review before creating remediation tasks.",
+                "Send a compliance impact alert to the AI governance review channel.",
+                "Request human approval before creating remediation tasks.",
+                "Update human oversight, monitoring, incident escalation, and evidence retention controls.",
                 "Generate a cited impact report for the audit trail.",
             ]
 
@@ -44,7 +45,7 @@ class VigilOrchestrator:
             is_actionable=is_actionable,
             risk_level=risk_level,
             summary=(
-                "Vigil found a potentially actionable regulatory update with matching enterprise context."
+                "Vigil found an actionable EU AI Act governance update with matching enterprise context."
                 if is_actionable
                 else "Vigil did not find enough evidence to recommend action."
             ),

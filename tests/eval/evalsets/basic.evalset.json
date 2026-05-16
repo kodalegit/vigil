@@ -1,0 +1,33 @@
+{
+  "eval_set_id": "vigil_eu_ai_act_basic",
+  "name": "Vigil EU AI Act Basic Evaluation",
+  "description": "Checks that Vigil uses the regulatory impact tool for the flagship EU AI Act governance scenario.",
+  "eval_cases": [
+    {
+      "eval_id": "eu_ai_act_impact_analysis",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Analyze the EU AI Act high-risk AI deployer obligations for our SaaS AI governance controls."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "run_regulatory_impact_analysis"
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "vigil",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    }
+  ]
+}
