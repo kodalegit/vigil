@@ -1,0 +1,92 @@
+# Vigil Production Readiness Notes
+
+## Architecture Decision
+
+Use hierarchical task decomposition with explicit `AgentTool` invocation for the MVP and near-production path.
+
+This keeps the orchestrator responsible for product judgment while letting specialist agents do bounded context work:
+
+1. `vigil_orchestrator` interprets the user request and owns final classification, alert wording, approval gating, and audit narrative.
+2. `source_monitoring_agent` extracts regulatory changes and obligations from trusted sources.
+3. `enterprise_context_agent` maps obligations to internal policies, controls, SOPs, snippets, and owners.
+
+Prefer `AgentTool` over LLM-driven transfer for these two specialists because Vigil needs the parent to gather both results and synthesize one final decision. Transfer is better when the conversation should be handed off to another agent to complete the response. Here, the subagents should behave like callable research tools with results flowing back up to the orchestrator.
+
+## Why Not a Fixed Workflow Yet
+
+A `SequentialAgent` or `ParallelAgent` can be useful for scheduled monitoring runs later, especially once source detection and enterprise retrieval are deterministic. For interactive compliance analysis, the LLM parent should keep discretion to ask follow-up questions, skip irrelevant work, rerun one specialist, or produce a report. We can add workflow agents later for cron-style batch monitoring without changing the user-facing orchestrator.
+
+## Google Ecosystem Preparation
+
+### Agent Runtime
+
+Keep the project compatible with `agents-cli` and ADK:
+
+- Preserve `[tool.agents-cli]` metadata in `pyproject.toml`.
+- Keep `vigil/agent.py` exporting `root_agent` and `app`.
+- Keep `vigil/fast_api_app.py` for local and containerized serving.
+- Add deployment with `agents-cli scaffold enhance . --deployment-target agent_runtime` when ready.
+- Use Agent Runtime managed deployment, revisions, traffic, Cloud Logging, Cloud Trace, Monitoring, IAM, and agent identity rather than building custom deployment plumbing early.
+
+### Sessions
+
+Local development currently uses in-memory sessions. For Agent Runtime, use Agent Platform Sessions rather than application-managed session storage. Session state should hold per-conversation investigation state, current regulatory topic, selected sources, and temporary evidence packets. Avoid storing long-term organization facts only in session state.
+
+### Memory Bank
+
+Use Memory Bank for durable user and organization preferences:
+
+- organization jurisdictions
+- regulated products and AI use cases
+- preferred Slack channel and reviewer
+- risk tolerance
+- known false positives
+- recurring monitoring preferences
+
+Do not store evidence-only facts as durable memory unless they are reusable preferences or organization profile facts. Source citations and impact decisions belong in the audit trail.
+
+### RAG And Enterprise Context
+
+Keep `RetrievalBackend` as the seam between local corpus search and managed retrieval.
+
+Use RAG Engine as the primary Google-managed retrieval implementation for indexed Google
+Drive or Cloud Storage documents. Google Drive MCP should be treated as an auxiliary tool
+for file search, metadata lookup, previews, and ingestion refresh workflows. MCP alone does
+not provide the stable semantic chunk ranking and citation contract needed for Vigil's
+obligation-to-policy mapping loop.
+
+Near-term path:
+
+1. Add a small local `data/corpus/` of synthetic AI governance docs.
+2. Add metadata fields: owner, business unit, artifact type, jurisdiction, system class, last reviewed date.
+3. Add a managed retrieval backend for Vertex AI RAG Engine.
+4. Preserve citations and snippets in the `EnterpriseFinding` contract.
+
+For the hackathon, the local indexed corpus should be the default demo path. RAG Engine is
+the production path once the Google Cloud project, corpus, and Drive sharing are configured.
+
+### Slack
+
+There are two separate Slack tracks:
+
+- Operational Slack actions: Vigil posts alerts, requests approval, receives button callbacks, and creates mock or real remediation tickets. This requires a Slack app, bot token, signing secret, webhook endpoint, and idempotent approval handling.
+- Gemini Enterprise Slack federation: Gemini Enterprise can connect Slack as a federated search data source. That is useful for searching Slack history as enterprise context, but it does not replace Vigil's operational Slack alert workflow.
+
+For production, implement operational Slack behind `ActionBackend` first. Treat federated Slack search as an enterprise retrieval source later.
+
+### Security And Governance
+
+- Require human approval before remediation actions.
+- Keep least-privilege service accounts for source, retrieval, Slack, ticketing, and audit tools.
+- Use Secret Manager for Slack and third-party credentials.
+- Add audit records for every external action and approval decision.
+- Add Model Armor or policy checks before posting externally visible messages.
+- Add Cloud Trace spans around subagent calls and external tool calls.
+
+## Next Implementation Milestones
+
+1. Replace mock enterprise retrieval with a local document corpus and metadata-aware search.
+2. Add real Slack mock-to-real boundary: payload builder, signing verification, and approval callback model.
+3. Add source-monitoring backend that can use Gemini grounded search or configured official URLs.
+4. Add Agent Runtime scaffold and verify deploy in a dev project.
+5. Add Agent Platform Sessions and Memory Bank once deployed or when local SDK support is configured.

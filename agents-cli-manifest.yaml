@@ -1,0 +1,11 @@
+name: vigil
+description: Autonomous regulatory impact assistant for EU AI Act governance monitoring
+base_template: adk
+agent_directory: vigil
+create_params:
+  deployment_target: none
+  session_type: in_memory
+  cicd_runner: skip
+  include_data_ingestion: false
+  datastore: none
+  agent_guidance_filename: AGENTS.md

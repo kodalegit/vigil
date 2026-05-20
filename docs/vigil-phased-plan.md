@@ -55,8 +55,9 @@ Purpose:
 Backends:
 
 - Gemini through Agent Platform local auth.
-- Google Drive connector.
-- Local or managed retrieval backend.
+- Gemini Google Search grounding for web source monitoring.
+- Google Drive ingestion into RAG Engine where available.
+- Local indexed retrieval or managed RAG Engine retrieval backend.
 - Real Slack development workspace if available.
 
 ### 3.3 Production-Ready Mode
@@ -69,7 +70,8 @@ Backends:
 
 - Agent Runtime.
 - Service account authentication.
-- Vertex AI RAG Engine or Vector Search.
+- Vertex AI RAG Engine over indexed Google Drive or Cloud Storage documents.
+- Google Drive MCP as an auxiliary lookup/refresh tool, not the core semantic retriever.
 - Secret Manager.
 - Cloud Logging and Cloud Trace.
 - Real Slack and enterprise integrations.
@@ -235,23 +237,25 @@ Exit criteria:
 
 Goal:
 
-Add meaningful enterprise context retrieval while preserving local development ergonomics.
+Add meaningful RAG-style enterprise context retrieval while preserving local development ergonomics.
 
 Tasks:
 
 - Implement local document ingestion.
-- Implement local retrieval backend.
+- Implement local indexed retrieval backend with document metadata, chunks, and relevance scores.
 - Add document metadata and citation model.
-- Add Google Drive connector.
-- Add Drive document listing and fetch behavior.
+- Add RAG Engine ingestion helper for Google Drive and Cloud Storage paths.
+- Document Drive sharing requirements for the Vertex RAG Data Service Agent.
 - Add retrieval abstraction for local versus Google backends.
-- Evaluate Vertex AI RAG Engine versus local/vector fallback.
+- Add Vertex AI RAG Engine retrieval backend behind the same interface.
+- Treat Drive MCP as auxiliary file lookup/preview/refresh support.
 - Add initial multimodal retrieval experiment if feasible.
 
 Deliverables:
 
 - Local corpus retrieval.
-- Google Drive connector.
+- Google Drive-to-RAG ingestion helper.
+- RAG Engine backend scaffold.
 - Enterprise context subagent using retrieval abstraction.
 - Internal citations linked to local files or Drive documents.
 
@@ -300,6 +304,7 @@ Tasks:
 - Add Secret Manager documentation.
 - Add logging and tracing guidance.
 - Prepare Agent Runtime deployment path.
+- Prepare Agent Platform Sessions and Memory Bank integration points.
 - Evaluate Agents CLI scaffold/evaluate/deploy/publish flow.
 - Document Cloud Run fallback path if Agent Runtime setup blocks progress.
 - Add Agent Card / marketplace-readiness metadata.

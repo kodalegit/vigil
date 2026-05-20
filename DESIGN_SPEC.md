@@ -12,9 +12,11 @@ Vigil is an autonomous regulatory impact assistant for lean legal and compliance
 
 ## Tools Required
 
-- `run_regulatory_impact_analysis`: local deterministic tool that runs the current Vigil mock source, retrieval, action, and audit backends.
-- Future source tools: Gemini grounded search and configured source monitoring.
-- Future enterprise tools: Google Drive search, local corpus retrieval, and Agent Platform RAG or Vector Search.
+- `source_monitoring_agent`: ADK `AgentTool` specialist that extracts regulatory changes and obligations.
+- `enterprise_context_agent`: ADK `AgentTool` specialist that maps obligations to internal policies, controls, SOPs, and snippets.
+- `run_regulatory_impact_analysis`: local deterministic compatibility tool used by CLI/tests while the ADK orchestration path matures.
+- Source tools: mock source search or Gemini Google Search grounding.
+- Enterprise tools: local indexed corpus retrieval first, Vertex AI RAG Engine next, Google Drive MCP only as auxiliary file access.
 - Future action tools: Slack approval workflow, ticket creation, and audit storage.
 
 ## Constraints & Safety Rules
@@ -29,8 +31,9 @@ Vigil is an autonomous regulatory impact assistant for lean legal and compliance
 
 - `agents-cli info` recognizes the project.
 - The local CLI demo returns an actionable EU AI Act impact decision.
-- The ADK app exposes a Vigil orchestrator agent with source monitoring and enterprise context subagents.
+- The ADK app exposes a Vigil orchestrator agent that explicitly invokes source monitoring and enterprise context specialists as `AgentTool`s.
 - The first local tool call returns source evidence, internal mappings, recommended actions, and simulated alert/report actions.
+- The enterprise context path returns document metadata, chunks, citations, relevance scores, and obligation mappings.
 
 ## Reference Samples
 

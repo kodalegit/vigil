@@ -113,7 +113,7 @@ The enterprise context subagent searches the organization's internal context bas
 Responsibilities:
 
 - Search Google Drive and local development document stores.
-- Use RAG over indexed enterprise content.
+- Use RAG over indexed enterprise content as the primary retrieval path.
 - Support future multimodal context from audio, PDFs, images, slides, and screenshots.
 - Retrieve only context relevant to the current regulatory concern.
 - Return compressed findings with citations back to internal artifacts.
@@ -301,6 +301,19 @@ This audit trail should make it possible to reconstruct what changed, why Vigil 
 
 ## 8. Retrieval and RAG Strategy
 
+Vigil's core enterprise experience requires semantic retrieval over indexed organizational
+documents. Google Drive MCP can help with ad hoc file lookup, metadata inspection, previews,
+and refresh workflows, but it should not be the primary retrieval engine for obligation-to-
+policy mapping. The production path is:
+
+```text
+Google Drive / local corpus
+  -> ingestion and chunking
+  -> local indexed corpus for development
+  -> Vertex AI RAG Engine for managed retrieval
+  -> Enterprise Context Subagent
+```
+
 ### 8.1 Local Development
 
 Local development should not require cloud infrastructure for every run.
@@ -308,15 +321,27 @@ Local development should not require cloud infrastructure for every run.
 Use a retrieval interface with two backends:
 
 1. Local backend
-   - Local document folder.
-   - Local metadata store.
-   - Lightweight vector store or simple keyword search at first.
+   - Local document folder under the project package.
+   - Metadata-aware chunking.
+   - Lightweight semantic/lexical ranking for deterministic tests.
    - Mock Google Drive files for tests.
 
 2. Google backend
    - Google Drive ingestion.
-   - Vertex AI RAG Engine or Vertex AI Vector Search.
-   - Gemini embeddings, including Gemini Embedding 2 where available.
+   - Vertex AI RAG Engine as the primary managed retrieval backend.
+   - Gemini embeddings and RAG Engine retrieval configuration where available.
+   - Drive MCP only as an auxiliary file access and refresh tool.
+
+### 8.2 MVP Production Slice
+
+The next credible hackathon slice is:
+
+1. Gemini web search grounding for regulatory source monitoring.
+2. Local indexed corpus for repeatable enterprise retrieval demos.
+3. RAG Engine ingestion helper for Google Drive folders/files.
+4. Mock Slack alert with approval buttons.
+5. Audit events for analysis start/completion and mock external actions.
+6. ADK evals for the EU AI Act happy path, irrelevant updates, ambiguous sources, and citation quality.
 
 The agent code should call the retrieval interface, not a specific backend directly.
 

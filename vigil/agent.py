@@ -3,9 +3,11 @@ import os
 import google.auth
 from google.adk.agents import Agent
 from google.adk.apps import App
+from google.adk.tools import agent_tool
 
 from vigil.agents import VigilOrchestrator
-from vigil.schemas import MonitoringInstruction
+from vigil.backends import create_backends
+from vigil.schemas import MonitoringInstruction, SourceFinding
 from vigil.settings import get_settings
 
 
@@ -37,6 +39,71 @@ def configure_google_model_auth() -> None:
 configure_google_model_auth()
 
 
+def _parse_sources(sources: str | None) -> list[str]:
+    if not sources:
+        return ["https://artificialintelligenceact.eu/"]
+    return [source.strip() for source in sources.split(",") if source.strip()]
+
+
+async def analyze_regulatory_sources(
+    query: str,
+    jurisdiction: str = "European Union",
+    domain: str = "AI governance",
+    sources: str | None = None,
+) -> dict:
+    """Extract regulatory changes and obligations from trusted sources.
+
+    Args:
+        query: Regulatory change, topic, or monitoring instruction to investigate.
+        jurisdiction: Jurisdiction to focus on.
+        domain: Compliance domain to focus on.
+        sources: Optional comma-separated source URLs or source names.
+
+    Returns:
+        Source findings with obligation text, citations, and confidence scores.
+    """
+    instruction = MonitoringInstruction(
+        query=query,
+        jurisdiction=jurisdiction,
+        domain=domain,
+        sources=_parse_sources(sources),
+    )
+    findings = await create_backends().source.search(instruction)
+    return {"source_findings": [finding.model_dump(mode="json") for finding in findings]}
+
+
+async def map_enterprise_context(
+    query: str,
+    source_findings: list[dict] | None = None,
+    jurisdiction: str = "European Union",
+    domain: str = "AI governance",
+) -> dict:
+    """Map regulatory obligations to internal policies, controls, and SOPs.
+
+    Args:
+        query: Regulatory change, topic, or monitoring instruction to investigate.
+        source_findings: Source findings from the source monitoring agent.
+        jurisdiction: Jurisdiction to focus on.
+        domain: Compliance domain to focus on.
+
+    Returns:
+        Enterprise findings with affected artifacts, snippets, citations, and confidence scores.
+    """
+    instruction = MonitoringInstruction(
+        query=query,
+        jurisdiction=jurisdiction,
+        domain=domain,
+        sources=["https://artificialintelligenceact.eu/"],
+    )
+    parsed_source_findings = _parse_source_finding_dicts(source_findings)
+    findings = await create_backends().retrieval.search(instruction, parsed_source_findings)
+    return {
+        "enterprise_findings": [
+            finding.model_dump(mode="json") for finding in findings
+        ]
+    }
+
+
 async def run_regulatory_impact_analysis(
     query: str,
     jurisdiction: str = "European Union",
@@ -63,25 +130,50 @@ async def run_regulatory_impact_analysis(
     return decision.model_dump(mode="json")
 
 
+def _parse_source_finding_dicts(source_findings: list[dict] | None) -> list[SourceFinding]:
+    parsed: list[SourceFinding] = []
+    for item in source_findings or []:
+        if "source_findings" in item and isinstance(item["source_findings"], list):
+            parsed.extend(_parse_source_finding_dicts(item["source_findings"]))
+            continue
+        try:
+            parsed.append(SourceFinding.model_validate(item))
+        except ValueError:
+            continue
+    return parsed
+
+
 source_monitoring_agent = Agent(
     name="source_monitoring_agent",
     model=settings.vigil_model,
-    instruction=(
-        "You are Vigil's source monitoring subagent. Identify trusted regulatory "
-        "changes and compress them into cited obligations. For the local prototype, "
-        "use the regulatory impact analysis tool when evidence is needed."
+    description=(
+        "Extracts trusted regulatory source changes and concise obligation evidence "
+        "for a requested jurisdiction and compliance domain."
     ),
-    tools=[run_regulatory_impact_analysis],
+    instruction=(
+        "You are Vigil's source monitoring and obligation extraction subagent. "
+        "For every request, call analyze_regulatory_sources. Return a compact, "
+        "cited summary of what changed, obligations, source URLs, confidence, and "
+        "remaining uncertainty. Do not map internal enterprise artifacts."
+    ),
+    tools=[analyze_regulatory_sources],
 )
 
 enterprise_context_agent = Agent(
     name="enterprise_context_agent",
     model=settings.vigil_model,
-    instruction=(
-        "You are Vigil's enterprise context subagent. Map obligations to internal "
-        "policies, controls, SOPs, owners, and evidence snippets. Be concise and cite "
-        "specific artifacts."
+    description=(
+        "Maps regulatory obligations to internal policies, controls, SOPs, owners, "
+        "and evidence snippets from enterprise context."
     ),
+    instruction=(
+        "You are Vigil's enterprise context mapping subagent. For every request, "
+        "call map_enterprise_context using the regulatory topic and any obligation "
+        "evidence provided by the orchestrator. Return affected artifacts, snippets, "
+        "citations, confidence, and mapping rationale. Do not make the final risk or "
+        "approval decision."
+    ),
+    tools=[map_enterprise_context],
 )
 
 root_agent = Agent(
@@ -90,14 +182,17 @@ root_agent = Agent(
     instruction=(
         "You are Vigil, an autonomous regulatory impact assistant for lean legal and "
         "compliance teams at mid-size SaaS companies. Your flagship local demo is EU AI "
-        "Act governance impact analysis. When a user asks about a regulatory change, "
-        "call run_regulatory_impact_analysis, then explain: what changed, why it "
-        "matters, affected internal artifacts, recommended actions, approval status, "
-        "and audit evidence. Do not present legal advice as final counsel. Require "
-        "human approval before remediation ticket creation."
+        "Act governance impact analysis. Use hierarchical task decomposition: first "
+        "call source_monitoring_agent to extract regulatory changes and obligations, "
+        "then call enterprise_context_agent to map those obligations to internal "
+        "artifacts. You own the final synthesis, impact classification, recommended "
+        "actions, approval status, and audit narrative. Do not present legal advice "
+        "as final counsel. Require human approval before remediation ticket creation."
     ),
-    tools=[run_regulatory_impact_analysis],
-    sub_agents=[source_monitoring_agent, enterprise_context_agent],
+    tools=[
+        agent_tool.AgentTool(agent=source_monitoring_agent),
+        agent_tool.AgentTool(agent=enterprise_context_agent),
+    ],
 )
 
 app = App(

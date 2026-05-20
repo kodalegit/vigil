@@ -10,10 +10,13 @@ class Settings(BaseSettings):
     app_env: str = "local"
     vigil_model: str = "gemini-2.5-flash"
     vigil_reasoning_model: str = "gemini-2.5-pro"
-    vigil_retrieval_backend: Literal["local", "google"] = "local"
+    vigil_retrieval_backend: Literal["local", "rag_engine"] = "local"
     vigil_memory_backend: Literal["local", "google"] = "local"
-    vigil_source_backend: Literal["mock", "gemini"] = "mock"
+    vigil_source_backend: Literal["mock", "gemini_web"] = "mock"
     vigil_action_backend: Literal["mock", "slack"] = "mock"
+    vigil_retrieval_top_k: int = 6
+    vigil_rag_corpus: str | None = None
+    vigil_rag_distance_threshold: float = 0.5
     google_genai_use_vertexai: bool = False
     google_api_key: str | None = None
     google_cloud_project: str | None = None

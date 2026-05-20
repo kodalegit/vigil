@@ -21,6 +21,8 @@ def show_doctor() -> None:
     table.add_row("Reasoning model", settings.vigil_reasoning_model)
     table.add_row("Source backend", settings.vigil_source_backend)
     table.add_row("Retrieval backend", settings.vigil_retrieval_backend)
+    table.add_row("Retrieval top K", str(settings.vigil_retrieval_top_k))
+    table.add_row("RAG corpus", settings.vigil_rag_corpus or "not set")
     table.add_row("Memory backend", settings.vigil_memory_backend)
     table.add_row("Action backend", settings.vigil_action_backend)
     table.add_row("Use Vertex AI", str(settings.google_genai_use_vertexai))
