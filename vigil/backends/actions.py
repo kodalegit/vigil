@@ -54,12 +54,13 @@ def build_slack_alert_payload(decision: ImpactDecision) -> dict:
         for obligation in finding.obligations
     ][:5]
     return {
-        "channel": "#ai-governance-review",
+        "channel": decision.slack_channel or "#ai-governance-review",
         "title": "EU AI Act update may affect AI governance controls",
         "classification": decision.classification,
         "priority": decision.risk_level.value,
         "approval_required": decision.approval_required,
         "approval_status": decision.approval_status,
+        "reviewers": decision.reviewer_user_ids,
         "what_changed": what_changed,
         "why_it_matters": [decision.summary],
         "affected_artifacts": _affected_artifacts(decision),

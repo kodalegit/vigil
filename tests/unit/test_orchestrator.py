@@ -2,6 +2,8 @@ from vigil.agents.orchestrator import VigilOrchestrator
 from vigil.backends import BackendBundle
 from vigil.backends.actions import MockActionBackend
 from vigil.backends.audit import LocalAuditBackend
+from vigil.backends.memory import LocalMemoryBackend
+from vigil.backends.org_context import LocalOrgContextRegistry, build_context_update_proposal
 from vigil.schemas import (
     EnterpriseFinding,
     MonitoringInstruction,
@@ -105,3 +107,50 @@ async def test_orchestrator_marks_uncertain_source_without_obligations_ambiguous
     assert decision.risk_level.value == "medium"
     assert decision.approval_required is False
     assert "Ask for clarification" in decision.recommended_actions[0]
+
+
+async def test_orchestrator_uses_approved_org_context_and_false_positive_inventory() -> None:
+    registry = LocalOrgContextRegistry()
+    proposal = await build_context_update_proposal(
+        registry,
+        org_id="false-positive-org",
+        summary="Approve false positive and Slack routing.",
+        updates={
+            "slack_preferences": {"default_channel": "#legal-review"},
+            "obligation_inventory": [
+                {
+                    "obligation_id": "obl-test",
+                    "jurisdiction": "European Union",
+                    "canonical_text": "Review high-risk AI oversight procedures.",
+                    "status": "false_positive",
+                    "approval_status": "approved",
+                    "confidence": "high",
+                    "evidence_snippets": ["Deployers shall review oversight procedures."],
+                }
+            ],
+        },
+        approved=True,
+    )
+    await registry.commit_proposal(proposal.proposal_id, approved=True)
+    audit = LocalAuditBackend()
+    orchestrator = VigilOrchestrator(
+        backends=BackendBundle(
+            source=ObligationOnlySourceBackend(),
+            retrieval=EmptyRetrievalBackend(),
+            actions=MockActionBackend(),
+            audit=audit,
+            org_context=registry,
+            memory=LocalMemoryBackend(),
+        )
+    )
+
+    decision = await orchestrator.analyze(
+        MonitoringInstruction(
+            query="EU AI Act deployer obligations",
+            org_id="false-positive-org",
+        )
+    )
+
+    assert decision.classification == "irrelevant"
+    assert decision.slack_channel == "#legal-review"
+    assert any(event.event_type == "context_loaded" for event in audit.events)

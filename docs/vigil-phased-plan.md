@@ -77,7 +77,7 @@ Source monitoring has two modes:
 
 The source layer must preserve URLs, titles, snippets, retrieved timestamps, confidence, and uncertainty. It must avoid legal-advice language.
 
-### 2.5 Memory And Sessions
+### 2.5 Memory, Registry, And Sessions
 
 Sessions are for short-lived investigation state:
 
@@ -88,7 +88,7 @@ Sessions are for short-lived investigation state:
 - pending approval state
 - follow-up answers
 
-Memory Bank is deferred until we have recurring user or organization preferences worth preserving:
+Memory Bank is wired behind a backend seam for recurring user or organization preferences:
 
 - jurisdictions
 - regulated products
@@ -99,6 +99,16 @@ Memory Bank is deferred until we have recurring user or organization preferences
 - known false positives
 
 Audit evidence, source findings, approval decisions, and tickets belong in audit records, not long-term memory.
+
+The typed organization context registry is the source of truth for critical context:
+
+- org profile
+- source allowlists
+- Slack preferences
+- monitoring profiles
+- obligation inventory
+
+Memory records are advisory and should only be written after explicit approval.
 
 ### 2.6 Slack And Actions
 
@@ -229,12 +239,16 @@ Still needed:
 - Real RAG Engine smoke test with a Google Cloud corpus.
 - Drive sharing documentation for the Vertex RAG Data Service Agent in the main README.
 
-### 3.6 Actions And Audit
+### 3.6 Context, Memory, Actions, And Audit
 
 Status: partially done
 
 Implemented:
 
+- `OrgContextRegistry` interface with a local in-process implementation.
+- `MemoryBackend` interface with approval-gated local memory writes.
+- `ContextCompiler` for registry defaults, allowlisted sources, provenance, and advisory memory loading.
+- Agent tools for profile inspection, context update proposal, validation, approved commit, memory search, and approved memory writes.
 - `ActionBackend` interface.
 - `MockActionBackend`.
 - Slack payload builder with approval buttons.
@@ -244,6 +258,8 @@ Implemented:
 
 Still needed:
 
+- Google Memory Bank deployment smoke test after Agent Runtime identifiers and IAM are available.
+- Persisted org context registry storage beyond local process memory.
 - Real audit storage schema and persisted records.
 - Explicit audit events for analysis started, source searched, retrieval completed, alert prepared, approval requested, approval received, ticket created, and false positive recorded.
 - Real Slack app integration.

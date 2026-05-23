@@ -1,11 +1,16 @@
 from vigil.agents.enterprise_context import EnterpriseContextAgent
 from vigil.agents.source_monitoring import SourceMonitoringAgent
 from vigil.backends import BackendBundle, create_backends
+from vigil.backends.memory import LocalMemoryBackend
+from vigil.backends.org_context import LocalOrgContextRegistry
+from vigil.context import ContextCompiler
 from vigil.schemas import (
     AuditEvent,
+    ContextPack,
     EnterpriseFinding,
     ImpactDecision,
     MonitoringInstruction,
+    OrgContext,
     RiskLevel,
     SourceFinding,
 )
@@ -19,9 +24,31 @@ class VigilOrchestrator:
         enterprise_agent: EnterpriseContextAgent | None = None,
     ) -> None:
         self.backends = backends or create_backends()
+        if self.backends.org_context is None:
+            self.backends = BackendBundle(
+                source=self.backends.source,
+                retrieval=self.backends.retrieval,
+                actions=self.backends.actions,
+                audit=self.backends.audit,
+                org_context=LocalOrgContextRegistry(),
+                memory=self.backends.memory,
+            )
+        if self.backends.memory is None:
+            self.backends = BackendBundle(
+                source=self.backends.source,
+                retrieval=self.backends.retrieval,
+                actions=self.backends.actions,
+                audit=self.backends.audit,
+                org_context=self.backends.org_context,
+                memory=LocalMemoryBackend(),
+            )
         self.source_agent = source_agent or SourceMonitoringAgent(self.backends.source)
         self.enterprise_agent = enterprise_agent or EnterpriseContextAgent(
             self.backends.retrieval
+        )
+        self.context_compiler = ContextCompiler(
+            registry=self.backends.org_context,
+            memory=self.backends.memory,
         )
 
     async def analyze(self, instruction: MonitoringInstruction) -> ImpactDecision:
@@ -32,6 +59,19 @@ class VigilOrchestrator:
             message="Started regulatory impact analysis.",
             metadata={"query": instruction.query},
         )
+        context_pack = await self.context_compiler.compile(instruction)
+        instruction = context_pack.instruction
+        await self._record_audit(
+            audit_events,
+            event_type="context_loaded",
+            message="Loaded organization registry context and advisory memories.",
+            metadata={
+                "org_id": context_pack.org_id,
+                "memories": str(len(context_pack.memories)),
+                "sources": str(len(instruction.sources)),
+            },
+        )
+
         source_findings = await self.source_agent.search(instruction)
         await self._record_audit(
             audit_events,
@@ -58,12 +98,18 @@ class VigilOrchestrator:
             },
         )
 
-        classification = _classify(source_findings, enterprise_findings)
+        classification = _classify(source_findings, enterprise_findings, context_pack)
         is_actionable = classification == "actionable"
-        risk_level = _risk_level(classification, source_findings, enterprise_findings)
-        recommended_actions = _recommended_actions(classification)
+        risk_level = _risk_level(
+            classification,
+            source_findings,
+            enterprise_findings,
+            context_pack.org_context,
+        )
+        recommended_actions = _recommended_actions(classification, context_pack.org_context)
 
         decision = ImpactDecision(
+            org_id=context_pack.org_id,
             is_actionable=is_actionable,
             risk_level=risk_level,
             classification=classification,
@@ -82,6 +128,10 @@ class VigilOrchestrator:
             approval_status="pending" if is_actionable else "not_required",
             ticket_status="blocked_pending_approval" if is_actionable else "not_required",
             audit_events=audit_events.copy(),
+            slack_channel=context_pack.org_context.slack_preferences.default_channel,
+            reviewer_user_ids=context_pack.org_context.slack_preferences.reviewer_user_ids,
+            context_provenance=context_pack.provenance,
+            applied_memories=context_pack.memories,
         )
 
         if decision.is_actionable:
@@ -152,12 +202,18 @@ class VigilOrchestrator:
 def _classify(
     source_findings: list[SourceFinding],
     enterprise_findings: list[EnterpriseFinding],
+    context_pack: ContextPack,
 ) -> str:
     obligation_count = _count_obligations(source_findings)
     chunk_count = _count_chunks(enterprise_findings)
     mapping_count = _count_mappings(enterprise_findings)
     has_uncertainty = any(finding.uncertainty for finding in source_findings)
 
+    if obligation_count and _all_obligations_are_approved_false_positives(
+        source_findings,
+        context_pack.org_context,
+    ):
+        return "irrelevant"
     if obligation_count > 0 and chunk_count > 0 and mapping_count > 0:
         return "actionable"
     if obligation_count > 0 and chunk_count == 0:
@@ -171,6 +227,7 @@ def _risk_level(
     classification: str,
     source_findings: list[SourceFinding],
     enterprise_findings: list[EnterpriseFinding],
+    org_context: OrgContext,
 ) -> RiskLevel:
     if classification == "actionable":
         high_obligation = any(
@@ -185,16 +242,19 @@ def _risk_level(
                 for chunk in finding.chunks
             }
         ) > 1
-        return RiskLevel.high if high_obligation or multi_artifact else RiskLevel.medium
+        if high_obligation or multi_artifact or org_context.profile.risk_tolerance == RiskLevel.low:
+            return RiskLevel.high
+        return RiskLevel.medium
     if classification in {"informational", "ambiguous"}:
         return RiskLevel.medium
     return RiskLevel.low
 
 
-def _recommended_actions(classification: str) -> list[str]:
+def _recommended_actions(classification: str, org_context: OrgContext) -> list[str]:
+    channel = org_context.slack_preferences.default_channel
     if classification == "actionable":
         return [
-            "Send a compliance impact alert to the AI governance review channel.",
+            f"Send a compliance impact alert to {channel}.",
             "Request human approval before creating remediation tasks.",
             "Update human oversight, monitoring, incident escalation, and evidence retention controls.",
             "Generate a cited impact report for the audit trail.",
@@ -255,3 +315,28 @@ def _count_chunks(enterprise_findings: list[EnterpriseFinding]) -> int:
 
 def _count_mappings(enterprise_findings: list[EnterpriseFinding]) -> int:
     return sum(len(finding.mappings) for finding in enterprise_findings)
+
+
+def _all_obligations_are_approved_false_positives(
+    source_findings: list[SourceFinding],
+    org_context: OrgContext,
+) -> bool:
+    obligations = [
+        obligation
+        for finding in source_findings
+        for obligation in finding.obligations
+    ]
+    if not obligations:
+        return False
+    false_positive_keys = {
+        (entry.obligation_id, entry.canonical_text.lower())
+        for entry in org_context.obligation_inventory
+        if entry.status == "false_positive" and entry.approval_status == "approved"
+    }
+    for obligation in obligations:
+        key = (obligation.id, obligation.text.lower())
+        text_match = any(obligation.text.lower() == text for _, text in false_positive_keys)
+        id_match = any(obligation.id == obligation_id for obligation_id, _ in false_positive_keys)
+        if not (key in false_positive_keys or id_match or text_match):
+            return False
+    return True

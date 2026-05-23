@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 from vigil.backends.actions import ActionBackend, MockActionBackend
 from vigil.backends.audit import AuditBackend, LocalAuditBackend
+from vigil.backends.memory import GoogleMemoryBankBackend, LocalMemoryBackend, MemoryBackend
+from vigil.backends.org_context import LocalOrgContextRegistry, OrgContextRegistry
 from vigil.backends.retrieval import LocalRetrievalBackend, RagEngineRetrievalBackend, RetrievalBackend
 from vigil.backends.source import GeminiWebSourceBackend, MockSourceBackend, SourceBackend
 from vigil.settings import Settings, get_settings
@@ -13,6 +15,8 @@ class BackendBundle:
     retrieval: RetrievalBackend
     actions: ActionBackend
     audit: AuditBackend
+    org_context: OrgContextRegistry | None = None
+    memory: MemoryBackend | None = None
 
 
 def create_backends(settings: Settings | None = None) -> BackendBundle:
@@ -22,6 +26,8 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
     retrieval: RetrievalBackend
     actions: ActionBackend = MockActionBackend()
     audit: AuditBackend = LocalAuditBackend()
+    org_context: OrgContextRegistry = LocalOrgContextRegistry()
+    memory: MemoryBackend
 
     if settings.vigil_source_backend == "mock":
         source = MockSourceBackend()
@@ -40,4 +46,18 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
     if settings.vigil_action_backend != "mock":
         raise NotImplementedError("Only the mock action backend is implemented locally.")
 
-    return BackendBundle(source=source, retrieval=retrieval, actions=actions, audit=audit)
+    if settings.vigil_memory_backend == "local":
+        memory = LocalMemoryBackend()
+    elif settings.vigil_memory_backend == "google":
+        memory = GoogleMemoryBankBackend(settings)
+    else:
+        raise NotImplementedError(f"Unknown memory backend: {settings.vigil_memory_backend}")
+
+    return BackendBundle(
+        source=source,
+        retrieval=retrieval,
+        actions=actions,
+        audit=audit,
+        org_context=org_context,
+        memory=memory,
+    )

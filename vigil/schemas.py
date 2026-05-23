@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,11 +12,23 @@ class RiskLevel(str, Enum):
     critical = "critical"
 
 
+MemoryTopic = Literal[
+    "source_policy",
+    "notification_preferences",
+    "false_positive_patterns",
+    "regulatory_scope",
+    "obligation_summaries",
+    "other",
+]
+
+
 class MonitoringInstruction(BaseModel):
     query: str
     jurisdiction: str | None = None
     domain: str | None = None
     sources: list[str] = Field(default_factory=list)
+    org_id: str = "default-org"
+    user_id: str | None = None
 
 
 class Citation(BaseModel):
@@ -85,6 +97,177 @@ class ObligationMapping(BaseModel):
     reason: str
 
 
+class OrgProfile(BaseModel):
+    org_id: str = "default-org"
+    display_name: str = "Default Organization"
+    sectors: list[str] = Field(default_factory=list)
+    products: list[str] = Field(default_factory=list)
+    business_model: str | None = None
+    jurisdictions: list[str] = Field(default_factory=lambda: ["European Union"])
+    risk_tolerance: RiskLevel = RiskLevel.medium
+
+
+class TrustedSource(BaseModel):
+    source_id: str
+    name: str
+    url: str
+    jurisdictions: list[str] = Field(default_factory=list)
+    domains: list[str] = Field(default_factory=list)
+    regulators: list[str] = Field(default_factory=list)
+    trust_level: Literal["official", "trusted", "watch", "blocked"] = "trusted"
+    freshness_days: int | None = None
+    notes: str | None = None
+
+
+class SourcePolicy(BaseModel):
+    allowlisted_sources: list[TrustedSource] = Field(default_factory=list)
+    blocked_sources: list[str] = Field(default_factory=list)
+    require_allowlist: bool = True
+
+    def allowed_urls(
+        self,
+        jurisdiction: str | None = None,
+        domain: str | None = None,
+    ) -> list[str]:
+        urls: list[str] = []
+        for source in self.allowlisted_sources:
+            if source.trust_level == "blocked" or source.url in self.blocked_sources:
+                continue
+            if jurisdiction and source.jurisdictions and jurisdiction not in source.jurisdictions:
+                continue
+            if domain and source.domains and domain not in source.domains:
+                continue
+            urls.append(source.url)
+        return urls
+
+    def is_allowed(self, source_url: str) -> bool:
+        if source_url in self.blocked_sources:
+            return False
+        return any(
+            source.url == source_url and source.trust_level != "blocked"
+            for source in self.allowlisted_sources
+        )
+
+
+class SlackPreferences(BaseModel):
+    default_channel: str = "#ai-governance-review"
+    reviewer_user_ids: list[str] = Field(default_factory=list)
+    notification_windows: list[str] = Field(default_factory=list)
+    escalation_rules: list[str] = Field(default_factory=list)
+
+
+class MonitoringProfile(BaseModel):
+    profile_id: str
+    name: str
+    query: str
+    jurisdictions: list[str] = Field(default_factory=list)
+    domains: list[str] = Field(default_factory=list)
+    cadence: str | None = None
+    threshold: Literal["low", "medium", "high"] = "medium"
+    source_ids: list[str] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class ObligationVersion(BaseModel):
+    version: int
+    canonical_text: str
+    source_quote: str
+    source_url: str | None = None
+    section_ref: str | None = None
+    effective_date: str | None = None
+    content_hash: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ObligationRegistryEntry(BaseModel):
+    obligation_id: str
+    jurisdiction: str
+    regulator: str | None = None
+    source_url: str | None = None
+    section_ref: str | None = None
+    canonical_text: str
+    topics: list[str] = Field(default_factory=list)
+    effective_date: str | None = None
+    status: Literal["candidate", "approved", "deprecated", "false_positive"] = "candidate"
+    confidence: Literal["low", "medium", "high"] = "medium"
+    approval_status: Literal["pending", "approved", "rejected"] = "pending"
+    versions: list[ObligationVersion] = Field(default_factory=list)
+    related_policy_ids: list[str] = Field(default_factory=list)
+    related_control_ids: list[str] = Field(default_factory=list)
+    owners: list[str] = Field(default_factory=list)
+    business_units: list[str] = Field(default_factory=list)
+    evidence_snippets: list[str] = Field(default_factory=list)
+    mapping_confidence: float = 0.0
+    last_reviewed_at: str | None = None
+
+
+class OrgContext(BaseModel):
+    profile: OrgProfile = Field(default_factory=OrgProfile)
+    source_policy: SourcePolicy = Field(default_factory=SourcePolicy)
+    slack_preferences: SlackPreferences = Field(default_factory=SlackPreferences)
+    monitoring_profiles: list[MonitoringProfile] = Field(default_factory=list)
+    obligation_inventory: list[ObligationRegistryEntry] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class MemoryRecord(BaseModel):
+    memory_id: str
+    org_id: str
+    app_name: str = "vigil"
+    user_id: str | None = None
+    topic: MemoryTopic = "other"
+    text: str
+    provenance: Literal["approved_registry", "approved_user_preference", "derived"] = (
+        "approved_registry"
+    )
+    registry_refs: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class MemoryWriteProposal(BaseModel):
+    topic: MemoryTopic
+    text: str
+    org_id: str = "default-org"
+    user_id: str | None = None
+    registry_refs: list[str] = Field(default_factory=list)
+    approved: bool = False
+
+
+class ContextProvenance(BaseModel):
+    field: str
+    source: Literal["registry", "memory", "session", "default"]
+    detail: str
+
+
+class ContextPack(BaseModel):
+    org_id: str
+    instruction: MonitoringInstruction
+    org_context: OrgContext
+    memories: list[MemoryRecord] = Field(default_factory=list)
+    session_context: dict[str, Any] = Field(default_factory=dict)
+    provenance: list[ContextProvenance] = Field(default_factory=list)
+
+
+class ContextUpdateProposal(BaseModel):
+    proposal_id: str
+    org_id: str = "default-org"
+    requested_by: str | None = None
+    summary: str
+    proposed_context: OrgContext
+    memory_writes: list[MemoryWriteProposal] = Field(default_factory=list)
+    diff: list[str] = Field(default_factory=list)
+    approved: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ContextUpdateResult(BaseModel):
+    proposal_id: str
+    committed: bool
+    message: str
+    context: OrgContext | None = None
+    memories_written: list[MemoryRecord] = Field(default_factory=list)
+
+
 class SourceFinding(BaseModel):
     summary: str
     obligations: list[RegulatoryObligation] = Field(default_factory=list)
@@ -123,6 +306,7 @@ class AuditEvent(BaseModel):
 
 
 class ImpactDecision(BaseModel):
+    org_id: str = "default-org"
     is_actionable: bool
     risk_level: RiskLevel
     classification: Literal["actionable", "informational", "irrelevant", "ambiguous"]
@@ -135,3 +319,7 @@ class ImpactDecision(BaseModel):
     approval_status: Literal["not_required", "pending", "approved", "rejected"] = "not_required"
     ticket_status: Literal["not_required", "blocked_pending_approval", "created"] = "not_required"
     audit_events: list[AuditEvent] = Field(default_factory=list)
+    slack_channel: str | None = None
+    reviewer_user_ids: list[str] = Field(default_factory=list)
+    context_provenance: list[ContextProvenance] = Field(default_factory=list)
+    applied_memories: list[MemoryRecord] = Field(default_factory=list)

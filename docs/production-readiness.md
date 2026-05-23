@@ -34,7 +34,8 @@ Local development currently uses in-memory sessions. For Agent Runtime, use Agen
 
 ### Memory Bank
 
-Use Memory Bank for durable user and organization preferences:
+Use Memory Bank for durable user and organization preferences, with the typed
+organization context registry as the source of truth:
 
 - organization jurisdictions
 - regulated products and AI use cases
@@ -43,7 +44,13 @@ Use Memory Bank for durable user and organization preferences:
 - known false positives
 - recurring monitoring preferences
 
-Do not store evidence-only facts as durable memory unless they are reusable preferences or organization profile facts. Source citations and impact decisions belong in the audit trail.
+Vigil now has a local `MemoryBackend` seam and a local `OrgContextRegistry` seam.
+The local registry stores approved org context, source allowlists, Slack preferences,
+monitoring profiles, and obligation inventory records. Memory writes are approval-gated
+and advisory; they should be generated from approved registry facts or approved reviewer
+preferences. Do not store evidence-only facts as durable memory unless they are reusable
+preferences or organization profile facts. Source citations and impact decisions belong
+in the audit trail.
 
 ### RAG And Enterprise Context
 
