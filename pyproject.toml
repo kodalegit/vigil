@@ -5,8 +5,8 @@ description = "Vigil is an autonomous regulatory monitoring and enterprise impac
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "google-adk>=1.15.0,<2.0.0",
-    "google-cloud-aiplatform[adk,agent_engines]>=1.112.0",
+    "google-adk>=2.0.0",
+    "google-cloud-aiplatform[agent_engines]>=1.112.0",
     "google-genai>=1.0.0",
     "google-api-python-client>=2.0.0",
     "google-auth>=2.0.0",
@@ -35,7 +35,7 @@ dev = [
     "mypy>=1.13.0",
 ]
 eval = [
-    "google-adk[eval]>=1.15.0,<2.0.0",
+    "google-adk[eval]>=2.0.0",
 ]
 lint = [
     "ruff>=0.8.0",

@@ -1,9 +1,18 @@
+import importlib.metadata
+
+from google.adk.workflow import Workflow
+
 from vigil.agent import (
     analyze_regulatory_sources,
     app,
+    commit_approved_context_update,
+    get_current_profile,
     map_enterprise_context,
+    propose_context_update,
     root_agent,
     run_regulatory_impact_analysis,
+    search_org_memory,
+    validate_context_update,
 )
 
 
@@ -12,12 +21,32 @@ def test_agent_is_vigil_app() -> None:
     assert root_agent.name == "vigil_orchestrator"
 
 
+def test_adk_2_runtime_is_available() -> None:
+    major_version = int(importlib.metadata.version("google-adk").split(".", 1)[0])
+
+    assert major_version >= 2
+    assert Workflow.__name__ == "Workflow"
+
+
 def test_orchestrator_uses_agent_tool_specialists() -> None:
     tool_names = {tool.name for tool in root_agent.tools}
 
     assert "source_monitoring_agent" in tool_names
     assert "enterprise_context_agent" in tool_names
     assert "run_regulatory_impact_analysis" not in tool_names
+
+
+def test_context_and_memory_tools_are_exposed_on_root_agent() -> None:
+    tool_names = {tool.name for tool in root_agent.tools}
+
+    assert {
+        "get_current_profile",
+        "propose_context_update",
+        "validate_context_update",
+        "commit_approved_context_update",
+        "search_org_memory",
+        "write_approved_memory",
+    }.issubset(tool_names)
 
 
 async def test_specialist_tools_return_structured_context() -> None:
@@ -70,3 +99,42 @@ async def test_regulatory_impact_tool_returns_eu_ai_act_decision() -> None:
     assert decision["action_results"]
     assert any(result["action"] == "create_ticket" for result in decision["action_results"])
     assert any(event["event_type"] == "ticket_blocked" for event in decision["audit_events"])
+
+
+async def test_context_tools_require_approval_before_commit_and_memory_write() -> None:
+    org_id = "integration-context-org"
+    proposal_result = await propose_context_update(
+        org_id=org_id,
+        requested_by="reviewer-1",
+        summary="Route regulatory alerts to legal review.",
+        jurisdictions="European Union, United States",
+        slack_channel="#legal-review",
+        memory_topic="notification_preferences",
+        memory_text="Send AI governance alerts to #legal-review.",
+        approved=False,
+    )
+    proposal = proposal_result["proposal"]
+
+    validation = await validate_context_update(proposal["proposal_id"])
+    rejected_commit = await commit_approved_context_update(
+        proposal["proposal_id"],
+        approved=False,
+    )
+    approved_commit = await commit_approved_context_update(
+        proposal["proposal_id"],
+        approved=True,
+    )
+    profile = await get_current_profile(org_id=org_id)
+    memories = await search_org_memory(
+        org_id=org_id,
+        user_id="reviewer-1",
+        query="AI governance legal review",
+        topics="notification_preferences",
+    )
+
+    assert validation["valid"] is True
+    assert rejected_commit["committed"] is False
+    assert approved_commit["committed"] is True
+    assert profile["org_context"]["slack_preferences"]["default_channel"] == "#legal-review"
+    assert approved_commit["memories_written"]
+    assert memories["memories"]

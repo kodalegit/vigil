@@ -12,9 +12,17 @@ This keeps the orchestrator responsible for product judgment while letting speci
 
 Prefer `AgentTool` over LLM-driven transfer for these two specialists because Vigil needs the parent to gather both results and synthesize one final decision. Transfer is better when the conversation should be handed off to another agent to complete the response. Here, the subagents should behave like callable research tools with results flowing back up to the orchestrator.
 
+## ADK 2 Status
+
+Vigil now targets ADK 2.x. The current code keeps the ADK 1.x-compatible parent
+agent plus `AgentTool` specialist pattern because it is simple and tested, while
+ADK 2 `Workflow` is available for future deterministic scheduled monitoring flows.
+Do not share persistent ADK session storage between pre-upgrade ADK 1.x deployments
+and ADK 2 deployments.
+
 ## Why Not a Fixed Workflow Yet
 
-A `SequentialAgent` or `ParallelAgent` can be useful for scheduled monitoring runs later, especially once source detection and enterprise retrieval are deterministic. For interactive compliance analysis, the LLM parent should keep discretion to ask follow-up questions, skip irrelevant work, rerun one specialist, or produce a report. We can add workflow agents later for cron-style batch monitoring without changing the user-facing orchestrator.
+An ADK 2 `Workflow` can be useful for scheduled monitoring runs later, especially once source detection and enterprise retrieval are deterministic. For interactive compliance analysis, the LLM parent should keep discretion to ask follow-up questions, skip irrelevant work, rerun one specialist, or produce a report. We can add workflow agents later for cron-style batch monitoring without changing the user-facing orchestrator.
 
 ## Google Ecosystem Preparation
 

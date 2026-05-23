@@ -25,6 +25,23 @@ async def test_context_compiler_applies_registry_defaults_and_source_allowlist()
     assert any(item.field == "sources" for item in pack.provenance)
 
 
+async def test_context_compiler_uses_matching_allowlisted_source_when_none_requested() -> None:
+    compiler = ContextCompiler(
+        registry=LocalOrgContextRegistry(),
+        memory=LocalMemoryBackend(),
+    )
+
+    pack = await compiler.compile(
+        MonitoringInstruction(
+            query="EU AI Act deployer obligations",
+            jurisdiction="European Union",
+            domain="AI governance",
+        )
+    )
+
+    assert pack.instruction.sources == ["https://artificialintelligenceact.eu/"]
+
+
 async def test_local_memory_requires_explicit_approval() -> None:
     memory = LocalMemoryBackend()
     proposal = MemoryWriteProposal(
@@ -44,6 +61,19 @@ async def test_local_memory_requires_explicit_approval() -> None:
     )
 
     assert written in results
+
+
+async def test_context_update_proposal_rejects_invalid_required_context() -> None:
+    registry = LocalOrgContextRegistry()
+
+    with pytest.raises(ValueError, match="at least one jurisdiction"):
+        await build_context_update_proposal(
+            registry,
+            org_id="invalid-org",
+            summary="Remove required jurisdiction context.",
+            updates={"profile": {"jurisdictions": []}},
+            approved=True,
+        )
 
 
 async def test_context_update_proposal_validates_and_commits_approved_changes() -> None:

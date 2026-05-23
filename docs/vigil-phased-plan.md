@@ -23,14 +23,14 @@ The current MVP domain is EU AI Act-style high-risk AI deployer obligations mapp
 
 ### 2.1 Agent Architecture
 
-Use ADK hierarchical task decomposition:
+Use ADK 2-compatible hierarchical task decomposition:
 
 - `vigil_orchestrator` is the parent agent and owns final judgment.
 - `source_monitoring_agent` is called as an `AgentTool` to gather trusted source evidence and candidate obligations.
 - `enterprise_context_agent` is called as an `AgentTool` to map obligations to internal enterprise artifacts.
 - Subagents return bounded, cited context. They do not decide final impact, alert priority, or approval state.
 
-We prefer callable subagents over LLM-driven transfer because Vigil needs the parent to collect both source and enterprise findings before producing one decision. Fixed workflow agents can be added later for scheduled batch monitoring, but they are not the core interactive architecture yet.
+We prefer callable subagents over LLM-driven transfer because Vigil needs the parent to collect both source and enterprise findings before producing one decision. ADK 2 workflow graphs can be added later for scheduled batch monitoring, but they are not the core interactive architecture yet.
 
 ### 2.2 Obligation Extraction
 

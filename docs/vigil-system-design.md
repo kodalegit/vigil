@@ -186,7 +186,7 @@ Memory should guide retrieval and decisions, but evidence should ground final cl
 
 ## 6. ADK Design Pattern
 
-Use an ADK parent-agent/subagent hierarchy.
+Use an ADK 2-compatible parent-agent/subagent hierarchy.
 
 Recommended pattern:
 
@@ -195,7 +195,9 @@ Recommended pattern:
 - The orchestrator delegates bounded context-gathering tasks to subagents.
 - Subagents return structured summaries through state or tool results.
 
-Use direct orchestrator control rather than a large fixed workflow graph. Fixed sequential or parallel workflow agents can be added later for scheduled monitoring runs, but the initial design should keep orchestration agent-driven.
+Use direct orchestrator control rather than a large fixed workflow graph. ADK 2
+`Workflow` graphs can be added later for scheduled monitoring runs, but the
+interactive design should keep orchestration agent-driven.
 
 ## 7. Tool Design
 
