@@ -302,28 +302,43 @@ User instruction
 
 The demo should be reliable with mock source + local corpus, then optionally show Gemini web source mode if credentials and network behavior are stable.
 
-## 5. Immediate Next Phase: Tighten The Local Impact Loop
+## 5. Immediate Phase: Tighten The Local Impact Loop
 
-Status: next
+Status: in progress
 
 Goal:
 
 Make the end-to-end local loop reliable, explainable, and demo-ready before adding real Slack or managed RAG.
 
-Tasks:
+Implemented:
 
-- Improve `VigilOrchestrator.analyze` decision logic so it explicitly distinguishes:
+- Explicit `classification` on `ImpactDecision`:
   - actionable
   - informational
   - irrelevant
-  - ambiguous / needs clarification
-- Make actionability require both source obligations and relevant enterprise evidence.
-- Add explicit approval state to the decision or action result model.
-- Persist local audit events for each material step.
-- Add an approval-gated mock ticket creation path.
+  - ambiguous
+- Actionability now requires source obligations, retrieved enterprise chunks, and obligation mappings.
+- `approval_required`, `approval_status`, and `ticket_status` are included in the decision.
+- Actionable decisions mark approval as pending and ticket creation as blocked.
+- Mock ticket creation refuses to run unless approval is supplied.
+- Audit events are attached to the returned decision and recorded through the audit backend.
+- Audit events now cover:
+  - analysis started
+  - source searched
+  - enterprise context retrieved
+  - alert prepared
+  - approval requested
+  - ticket blocked
+  - analysis completed
+- Tests cover actionable, informational, and ambiguous local loop behavior.
+- The local demo command shows classification, approval state, ticket state, action results, and audit events.
+
+Tasks:
+
 - Add a repeatable demo command for the flagship EU AI Act scenario.
 - Add a second demo/eval case for an irrelevant or low-impact update.
 - Add a third demo/eval case for ambiguous source evidence.
+- Persist local audit events beyond process memory if we want the CLI demo to show an audit log file.
 
 Exit criteria:
 

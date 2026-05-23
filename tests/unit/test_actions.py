@@ -21,8 +21,12 @@ def test_slack_payload_is_approval_oriented_and_snippet_limited() -> None:
     decision = ImpactDecision(
         is_actionable=True,
         risk_level=RiskLevel.high,
+        classification="actionable",
         summary="Vigil found an actionable EU AI Act update.",
         recommended_actions=["Request human approval before creating remediation tasks."],
+        approval_required=True,
+        approval_status="pending",
+        ticket_status="blocked_pending_approval",
         source_findings=[
             SourceFinding(
                 summary="EU AI Act",
@@ -59,6 +63,8 @@ def test_slack_payload_is_approval_oriented_and_snippet_limited() -> None:
     payload = build_slack_alert_payload(decision)
 
     assert payload["classification"] == "actionable"
+    assert payload["approval_required"] is True
+    assert payload["approval_status"] == "pending"
     assert "Approve & create ticket" in payload["buttons"]
     assert payload["affected_artifacts"][0]["owner"] == "Head of AI Governance"
     assert len(payload["affected_artifacts"][0]["snippet"]) <= 220

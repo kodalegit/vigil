@@ -125,8 +125,13 @@ class AuditEvent(BaseModel):
 class ImpactDecision(BaseModel):
     is_actionable: bool
     risk_level: RiskLevel
+    classification: Literal["actionable", "informational", "irrelevant", "ambiguous"]
     summary: str
     recommended_actions: list[str] = Field(default_factory=list)
     source_findings: list[SourceFinding] = Field(default_factory=list)
     enterprise_findings: list[EnterpriseFinding] = Field(default_factory=list)
     action_results: list[ActionResult] = Field(default_factory=list)
+    approval_required: bool = False
+    approval_status: Literal["not_required", "pending", "approved", "rejected"] = "not_required"
+    ticket_status: Literal["not_required", "blocked_pending_approval", "created"] = "not_required"
+    audit_events: list[AuditEvent] = Field(default_factory=list)

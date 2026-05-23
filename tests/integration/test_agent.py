@@ -58,9 +58,15 @@ async def test_regulatory_impact_tool_returns_eu_ai_act_decision() -> None:
     )
 
     assert decision["is_actionable"] is True
+    assert decision["classification"] == "actionable"
     assert decision["risk_level"] == "high"
     assert "EU AI Act" in decision["summary"]
+    assert decision["approval_required"] is True
+    assert decision["approval_status"] == "pending"
+    assert decision["ticket_status"] == "blocked_pending_approval"
     assert decision["source_findings"]
     assert decision["enterprise_findings"]
     assert decision["enterprise_findings"][0]["chunks"]
     assert decision["action_results"]
+    assert any(result["action"] == "create_ticket" for result in decision["action_results"])
+    assert any(event["event_type"] == "ticket_blocked" for event in decision["audit_events"])
