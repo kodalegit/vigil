@@ -1,397 +1,536 @@
 # Vigil Phased Implementation Plan
 
-## 1. Planning Assumptions
+Last updated: 2026-05-23
 
-Vigil will be built as a new Python project using `uv` and Google Agent Development Kit. The design favors local development first, with clean interfaces for replacing mock/local services with Google Cloud managed services during production hardening.
+This plan tracks what has actually been built, what design decisions are now settled, and what remains before Vigil is ready for a credible hackathon demo and a Google Cloud production path. It supports the system design in `docs/vigil-system-design.md`.
 
-The architecture is intentionally simplified:
+## 1. Current Product Direction
 
-- One orchestrator agent owns decision-making.
-- Two primary subagents gather and compress context.
-- External actions are performed through tools.
-- Cloud-specific services are introduced behind interfaces rather than hardcoded into business logic.
+Vigil is a regulatory impact agent for lean legal, compliance, and AI governance teams. The flagship scenario is:
 
-## 2. MVP Definition
+1. Search or monitor trusted regulatory sources for AI governance changes.
+2. Extract evidence-backed regulatory obligations.
+3. Retrieve relevant internal policies, controls, SOPs, templates, and inventories.
+4. Map obligations to affected enterprise artifacts and owners.
+5. Classify the event as actionable, informational, irrelevant, or uncertain.
+6. Prepare a Slack-style alert and cited report.
+7. Require human approval before remediation ticket creation.
+8. Preserve an audit trail for the decision and external actions.
 
-The MVP is successful when Vigil can:
+The current MVP domain is EU AI Act-style high-risk AI deployer obligations mapped against a synthetic AI governance corpus.
 
-1. Accept a user monitoring instruction.
-2. Use a source monitoring subagent to find or simulate relevant legal/compliance updates.
-3. Use an enterprise context subagent to search local or Google Drive context.
-4. Return cited, compressed evidence to the orchestrator.
-5. Have the orchestrator decide whether the update is relevant and actionable.
-6. Generate an impact summary and recommended action.
-7. Send or simulate a Slack alert.
-8. Generate a cited report.
-9. Require approval before mock remediation ticket creation.
-10. Run locally without requiring full cloud infrastructure.
+## 2. Architecture Decisions Now Locked For MVP
 
-## 3. Development Modes
+### 2.1 Agent Architecture
 
-### 3.1 Local Mock Mode
+Use ADK hierarchical task decomposition:
 
-Purpose:
+- `vigil_orchestrator` is the parent agent and owns final judgment.
+- `source_monitoring_agent` is called as an `AgentTool` to gather trusted source evidence and candidate obligations.
+- `enterprise_context_agent` is called as an `AgentTool` to map obligations to internal enterprise artifacts.
+- Subagents return bounded, cited context. They do not decide final impact, alert priority, or approval state.
 
-- Fast iteration.
-- No cloud dependencies.
-- Deterministic tests.
+We prefer callable subagents over LLM-driven transfer because Vigil needs the parent to collect both source and enterprise findings before producing one decision. Fixed workflow agents can be added later for scheduled batch monitoring, but they are not the core interactive architecture yet.
 
-Backends:
+### 2.2 Obligation Extraction
 
-- Mock regulatory source search.
-- Local enterprise document folder.
-- Local memory store.
-- Mock Slack/ticketing.
-- Optional Gemini API calls through AI Studio or Vertex AI ADC.
+Obligation extraction belongs in the source monitoring layer.
 
-### 3.2 Local Google-Connected Mode
+The source monitoring backend should use the model to synthesize grounded source text into a predetermined schema. Deterministic extraction is only a fallback when structured model extraction is unavailable or invalid.
 
-Purpose:
+The orchestrator should not perform low-level obligation extraction. It should use organization/session/memory context to select, prioritize, downgrade, or ask follow-up questions about candidate obligations returned by the source layer.
 
-- Validate real Gemini model behavior.
-- Validate Google Drive integration.
-- Validate grounded search where available.
-
-Backends:
-
-- Gemini through Agent Platform local auth.
-- Gemini Google Search grounding for web source monitoring.
-- Google Drive ingestion into RAG Engine where available.
-- Local indexed retrieval or managed RAG Engine retrieval backend.
-- Real Slack development workspace if available.
-
-### 3.3 Production-Ready Mode
-
-Purpose:
-
-- Prepare for Gemini Enterprise Agent Platform deployment.
-
-Backends:
-
-- Agent Runtime.
-- Service account authentication.
-- Vertex AI RAG Engine over indexed Google Drive or Cloud Storage documents.
-- Google Drive MCP as an auxiliary lookup/refresh tool, not the core semantic retriever.
-- Secret Manager.
-- Cloud Logging and Cloud Trace.
-- Real Slack and enterprise integrations.
-
-## 4. Environment Setup Plan
-
-### 4.1 Python and Package Management
-
-Use `uv` for environment management.
-
-Initial dependency categories:
-
-- ADK and Google GenAI libraries.
-- Google Cloud SDK clients as needed.
-- Pydantic or equivalent for schemas.
-- FastAPI or similar only if an HTTP API is needed for Slack/webhooks.
-- Testing dependencies.
-- Local document parsing dependencies.
-
-### 4.2 Environment Variables
-
-Create `.env.example` with non-secret placeholders.
-
-Recommended variables:
+Current flow:
 
 ```text
-APP_ENV=local
-VIGIL_MODEL=gemini-2.5-flash
-VIGIL_REASONING_MODEL=gemini-2.5-pro
-VIGIL_RETRIEVAL_BACKEND=local
-VIGIL_MEMORY_BACKEND=local
-VIGIL_SOURCE_BACKEND=mock
-VIGIL_ACTION_BACKEND=mock
-GOOGLE_GENAI_USE_VERTEXAI=FALSE
-GOOGLE_API_KEY=
-GOOGLE_CLOUD_PROJECT=
-GOOGLE_CLOUD_LOCATION=us-central1
-GOOGLE_APPLICATION_CREDENTIALS=
-SLACK_BOT_TOKEN=
-SLACK_SIGNING_SECRET=
+Gemini Google Search grounding
+  -> grounded source analysis
+  -> structured model extraction into RegulatoryObligation objects
+  -> conservative deterministic fallback only if structured extraction fails
+  -> orchestrator impact decision
 ```
 
-Local developer secrets should be stored in `.env`. Production secrets should be stored in Secret Manager.
+### 2.3 Enterprise Retrieval
 
-### 4.3 Authentication Strategy
+RAG Engine / indexed retrieval is the primary enterprise retrieval path. Google Drive MCP is auxiliary.
 
-Local quickstart option:
+The retrieval contract must stay stable across local and Google-managed implementations:
+
+- query
+- metadata filters
+- `top_k`
+- chunks
+- document metadata
+- citations
+- relevance score
+- permission-safe links
+- obligation-to-chunk mappings
+
+Local indexed retrieval is the default demo path. Vertex AI RAG Engine over Drive or Cloud Storage is the production path. Drive MCP is reserved for file lookup, metadata, previews, and refresh workflows.
+
+### 2.4 Source Monitoring
+
+Source monitoring has two modes:
+
+- `mock`: deterministic source findings for tests and local demo stability.
+- `gemini_web`: Gemini Google Search grounding plus structured obligation extraction.
+
+The source layer must preserve URLs, titles, snippets, retrieved timestamps, confidence, and uncertainty. It must avoid legal-advice language.
+
+### 2.5 Memory And Sessions
+
+Sessions are for short-lived investigation state:
+
+- current monitoring instruction
+- selected sources
+- latest source evidence
+- latest enterprise mappings
+- pending approval state
+- follow-up answers
+
+Memory Bank is deferred until we have recurring user or organization preferences worth preserving:
+
+- jurisdictions
+- regulated products
+- preferred Slack channel
+- reviewers
+- risk tolerance
+- recurring monitoring preferences
+- known false positives
+
+Audit evidence, source findings, approval decisions, and tickets belong in audit records, not long-term memory.
+
+### 2.6 Slack And Actions
+
+Slack is an operational integration, not the retrieval system.
+
+For MVP, keep Slack mocked behind `ActionBackend` and generate a safe Slack payload with:
+
+- classification
+- priority
+- what changed
+- why it matters
+- affected artifacts
+- short snippets
+- suggested actions
+- approval buttons
+
+Real Slack posting, signature verification, callback handling, and idempotent ticket creation come after retrieval/source quality is reliable.
+
+## 3. Implemented So Far
+
+### 3.1 Project Foundation
+
+Status: done
+
+Implemented:
+
+- Python package under `vigil/`.
+- `uv`-managed project dependencies.
+- ADK-compatible `vigil/agent.py` with `root_agent` and `app`.
+- FastAPI app scaffold in `vigil/fast_api_app.py`.
+- Local CLI demo entrypoint in `vigil/cli.py`.
+- Settings loader in `vigil/settings.py`.
+- `.env.example` with local, Google, RAG, and Slack configuration placeholders.
+
+### 3.2 Core Schemas
+
+Status: done
+
+Implemented structured contracts in `vigil/schemas.py`:
+
+- `MonitoringInstruction`
+- `Citation`
+- `RegulatoryObligation`
+- `SourceEvidence`
+- `EnterpriseDocument`
+- `EnterpriseChunk`
+- `ObligationMapping`
+- `SourceFinding`
+- `EnterpriseFinding`
+- `EvidencePacket`
+- `ImpactDecision`
+- `ActionResult`
+- `AuditEvent`
+
+Recent decision captured: source findings now carry first-class obligations and evidence rather than mostly free-text summaries. Enterprise findings carry chunks and obligation mappings rather than broad document names.
+
+### 3.3 ADK Agent Skeleton
+
+Status: done
+
+Implemented:
+
+- `vigil_orchestrator`
+- `source_monitoring_agent`
+- `enterprise_context_agent`
+- `AgentTool` wrapping for source and enterprise subagents.
+- Tool functions:
+  - `analyze_regulatory_sources`
+  - `map_enterprise_context`
+  - `run_regulatory_impact_analysis`
+
+Current orchestrator instructions require:
+
+- source monitoring first
+- enterprise context mapping second
+- final impact synthesis by the orchestrator
+- no final legal advice
+- approval before remediation ticket creation
+
+### 3.4 Source Monitoring Backend
+
+Status: partially done
+
+Implemented:
+
+- `MockSourceBackend` with deterministic EU AI Act-style obligations.
+- `GeminiWebSourceBackend` using Gemini Google Search grounding.
+- Structured obligation extraction using model JSON output.
+- `ObligationExtractionResult` schema for extraction.
+- Conservative deterministic fallback when structured extraction fails.
+- Parser support for fenced JSON model output.
+- Confidence and uncertainty propagation.
+
+Still needed:
+
+- Better official-source prompting and source allowlists.
+- Configurable monitored source sets.
+- Date/change detection for repeat monitoring.
+- Tests using mocked Gemini responses around grounding metadata and extraction failures.
+- Guardrails for source freshness and duplicate findings.
+
+### 3.5 Enterprise Retrieval Backend
+
+Status: partially done
+
+Implemented:
+
+- `RetrievalBackend` interface.
+- `LocalRetrievalBackend` over local Markdown corpus.
+- Metadata-aware Markdown chunking.
+- Lightweight deterministic lexical retrieval with phrase/synonym expansion.
+- `ObligationMapping` generation from obligations to chunks.
+- Synthetic local corpus:
+  - AI Governance Policy
+  - Model Risk Control Register
+  - AI Incident Response SOP
+  - Vendor AI Policy
+  - DPIA Template
+  - Model Inventory
+- `RagEngineRetrievalBackend` scaffold behind the same interface.
+- `scripts/import_drive_to_rag.py` for Drive/GCS import into Vertex AI RAG Engine.
+
+Still needed:
+
+- Metadata filters by jurisdiction, artifact type, owner, product, and business unit.
+- Better chunking and ranking.
+- Tests for RAG response normalization.
+- Real RAG Engine smoke test with a Google Cloud corpus.
+- Drive sharing documentation for the Vertex RAG Data Service Agent in the main README.
+
+### 3.6 Actions And Audit
+
+Status: partially done
+
+Implemented:
+
+- `ActionBackend` interface.
+- `MockActionBackend`.
+- Slack payload builder with approval buttons.
+- Safe snippet truncation for Slack payloads.
+- Basic mock report result.
+- Basic local audit backend exists.
+
+Still needed:
+
+- Real audit storage schema and persisted records.
+- Explicit audit events for analysis started, source searched, retrieval completed, alert prepared, approval requested, approval received, ticket created, and false positive recorded.
+- Real Slack app integration.
+- Slack request signing verification.
+- Approval callback model.
+- Idempotency keys for approval and ticket creation.
+- Mock ticket creation flow after approval.
+
+### 3.7 Tests And Evals
+
+Status: partially done
+
+Implemented:
+
+- Unit tests for source extraction and fallback behavior.
+- Unit tests for local retrieval.
+- Unit tests for Slack payload safety.
+- Integration tests for agent structure and local analysis loop.
+- Basic ADK evalset for the EU AI Act happy path.
+
+Most recent verified commands:
 
 ```text
-GOOGLE_GENAI_USE_VERTEXAI=FALSE
-GOOGLE_API_KEY=...
+uv run --extra dev pytest -s tests/unit/test_source.py
+uv run --extra dev pytest -s tests/unit tests/integration/test_agent.py
+uv run --extra dev ruff check .
+agents-cli eval run --evalset tests/eval/evalsets/basic.evalset.json --config tests/eval/eval_config.json
 ```
 
-Local Agent Platform option:
+Latest known result: unit/integration tests, lint, and the basic ADK eval passed.
+
+Known tooling note:
+
+- `agents-cli` reported a CLI/skills version mismatch. The CLI is newer than the installed local Google agent skills. Run `agents-cli update` before serious deployment or scaffold work.
+
+## 4. Current MVP Slice
+
+This is the slice we should finish before adding more cloud complexity:
 
 ```text
-GOOGLE_GENAI_USE_VERTEXAI=TRUE
-GOOGLE_CLOUD_PROJECT=...
-GOOGLE_CLOUD_LOCATION=us-central1
+User instruction
+  -> ADK orchestrator
+  -> source_monitoring_agent
+      -> mock or Gemini web source backend
+      -> structured obligations with citations
+  -> enterprise_context_agent
+      -> local indexed corpus retrieval
+      -> obligation-to-artifact mappings
+  -> orchestrator final decision
+      -> classification
+      -> recommended actions
+      -> mock Slack alert payload
+      -> audit narrative
+      -> approval required before ticket
 ```
 
-Then authenticate with:
+The demo should be reliable with mock source + local corpus, then optionally show Gemini web source mode if credentials and network behavior are stable.
 
-```text
-gcloud auth application-default login
-```
+## 5. Immediate Next Phase: Tighten The Local Impact Loop
 
-Production option:
-
-- Use attached Google Cloud service account where possible.
-- Avoid key files in production.
-- Grant least-privilege roles.
-- Store third-party secrets in Secret Manager.
-
-## 5. Phase 1: Project Foundation and Local Skeleton
+Status: next
 
 Goal:
 
-Build the smallest runnable local version of Vigil with the simplified orchestrator architecture.
+Make the end-to-end local loop reliable, explainable, and demo-ready before adding real Slack or managed RAG.
 
 Tasks:
 
-- Set up project package structure.
-- Add `.env.example`.
-- Add settings/config loader.
-- Define core schemas:
-  - monitoring instruction
-  - source finding
-  - enterprise finding
-  - evidence packet
-  - impact decision
-  - remediation action
-- Implement mock source monitoring backend.
-- Implement local enterprise context backend.
-- Implement mock Slack/report/ticket tools.
-- Create initial ADK orchestrator and subagent definitions.
-
-Deliverables:
-
-- Local runnable command.
-- Mock source monitoring subagent.
-- Mock enterprise context subagent.
-- Orchestrator combines findings and returns an impact summary.
+- Improve `VigilOrchestrator.analyze` decision logic so it explicitly distinguishes:
+  - actionable
+  - informational
+  - irrelevant
+  - ambiguous / needs clarification
+- Make actionability require both source obligations and relevant enterprise evidence.
+- Add explicit approval state to the decision or action result model.
+- Persist local audit events for each material step.
+- Add an approval-gated mock ticket creation path.
+- Add a repeatable demo command for the flagship EU AI Act scenario.
+- Add a second demo/eval case for an irrelevant or low-impact update.
+- Add a third demo/eval case for ambiguous source evidence.
 
 Exit criteria:
 
-- A developer can run one local command and see the orchestrator call subagents, synthesize context, and produce a cited impact decision.
+- A local run produces a cited decision with source obligations, affected artifacts, recommended actions, mock Slack payload, approval requirement, and audit record.
+- Irrelevant updates do not create high-priority alerts.
+- Ambiguous sources are marked uncertain or ask for clarification.
 
-## 6. Phase 2: Orchestrator Quality and Context Compression
+## 6. Phase: Retrieval Quality And Corpus Hardening
+
+Status: next after local loop tightening
 
 Goal:
 
-Make the orchestrator reliable before adding real integrations.
+Make enterprise mapping strong enough that the demo feels like real RAG-backed compliance work.
 
 Tasks:
 
-- Improve orchestrator instructions.
-- Define strict subagent output schemas.
-- Ensure subagents return compressed context, not long raw dumps.
-- Add citation preservation rules.
-- Add relevance, urgency, confidence, and uncertainty fields.
-- Add approval decision rules.
-- Add audit event recording to local storage.
-- Add tests for the core loop.
-
-Deliverables:
-
-- Stable orchestrator prompts/instructions.
-- Structured output from subagents.
-- Local audit log.
-- Basic evaluation fixtures.
+- Add metadata filters to `RetrievalBackend.search`.
+- Add richer metadata to local corpus docs:
+  - jurisdiction
+  - product
+  - system class
+  - owner
+  - review cadence
+  - business unit
+- Improve chunking for sections, headings, tables, and short policy clauses.
+- Add score thresholds so weak retrieval does not produce false affected artifacts.
+- Add mapping rationale tests.
+- Add “no matching enterprise artifact” test and eval.
+- Add citation quality eval that penalizes hallucinated owners or documents.
 
 Exit criteria:
 
-- Given mock regulatory and enterprise evidence, Vigil consistently decides whether to ignore, ask for clarification, alert, report, or request approval.
+- Enterprise retrieval returns precise snippets and mappings for known obligations.
+- Weak or unrelated queries produce informational/irrelevant decisions instead of false positives.
 
-## 7. Phase 3: Real Gemini and Grounded Source Search
+## 7. Phase: Gemini Web Source Robustness
+
+Status: planned
 
 Goal:
 
-Replace mock source intelligence with Gemini-powered source monitoring where feasible.
+Make `VIGIL_SOURCE_BACKEND=gemini_web` reliable enough for live demo use.
 
 Tasks:
 
-- Configure Gemini model access for local development.
-- Implement Gemini-backed source monitoring subagent.
-- Use grounding search for source discovery where available.
-- Preserve source URLs, titles, dates, snippets, and confidence.
-- Keep mock backend for deterministic tests.
-- Add source monitor evaluation cases.
-
-Deliverables:
-
-- Gemini-backed source monitoring backend.
-- Config switch between mock and Gemini source backends.
-- Source findings with grounding evidence.
+- Add source allowlist and trusted-source profiles.
+- Support official source preferences per jurisdiction/domain.
+- Normalize source dates and retrieved timestamps.
+- Detect ambiguity and return no obligations when evidence is insufficient.
+- Add mocked Gemini response tests for:
+  - valid structured output
+  - fenced JSON
+  - invalid JSON fallback
+  - no obligations found
+  - grounded results with missing snippets
+- Add eval case for live web-backed source search if credentials are available.
 
 Exit criteria:
 
-- The source monitoring subagent can search for a user-specified compliance topic and return concise, cited findings to the orchestrator.
+- Gemini web mode returns structured source findings with obligations only when the evidence supports them.
+- Fallback behavior is conservative and visible in uncertainty.
 
-## 8. Phase 4: Enterprise Context Retrieval
+## 8. Phase: RAG Engine And Google Drive Integration
+
+Status: planned
 
 Goal:
 
-Add meaningful RAG-style enterprise context retrieval while preserving local development ergonomics.
+Validate the production retrieval path over Google-managed infrastructure.
 
 Tasks:
 
-- Implement local document ingestion.
-- Implement local indexed retrieval backend with document metadata, chunks, and relevance scores.
-- Add document metadata and citation model.
-- Add RAG Engine ingestion helper for Google Drive and Cloud Storage paths.
-- Document Drive sharing requirements for the Vertex RAG Data Service Agent.
-- Add retrieval abstraction for local versus Google backends.
-- Add Vertex AI RAG Engine retrieval backend behind the same interface.
-- Treat Drive MCP as auxiliary file lookup/preview/refresh support.
-- Add initial multimodal retrieval experiment if feasible.
-
-Deliverables:
-
-- Local corpus retrieval.
-- Google Drive-to-RAG ingestion helper.
-- RAG Engine backend scaffold.
-- Enterprise context subagent using retrieval abstraction.
-- Internal citations linked to local files or Drive documents.
+- Create or select a Google Cloud project and location.
+- Create a Vertex AI RAG Engine corpus.
+- Import local demo docs from GCS or Drive using `scripts/import_drive_to_rag.py`.
+- Import a shared Drive folder/file set.
+- Grant the Vertex RAG Data Service Agent viewer access to selected Drive files/folders.
+- Configure:
+  - `VIGIL_RETRIEVAL_BACKEND=rag_engine`
+  - `VIGIL_RAG_CORPUS`
+  - `VIGIL_RAG_DISTANCE_THRESHOLD`
+  - `VIGIL_RETRIEVAL_TOP_K`
+- Run a smoke test comparing local retrieval and RAG Engine retrieval for the flagship scenario.
+- Document the Drive MCP auxiliary role and decide whether to add it for file preview/refresh.
 
 Exit criteria:
 
-- Given a regulatory topic, the enterprise context subagent returns relevant internal snippets and citations from local documents or Google Drive.
+- The enterprise context agent can retrieve cited chunks from RAG Engine through the same contract used by local retrieval.
+- The local demo can switch between local and RAG retrieval by environment variable.
 
-## 9. Phase 5: Slack, Reports, Approval, and Memory
+## 9. Phase: Slack, Approvals, Tickets, And Audit
+
+Status: planned
 
 Goal:
 
-Turn analysis into operational enterprise workflow.
+Turn impact analysis into an operational workflow.
 
 Tasks:
 
-- Implement Slack posting tool.
-- Implement Slack approval request flow or mock approval flow.
-- Implement report generation tool.
-- Implement local memory backend.
-- Add memory retrieval to orchestrator context.
-- Store organization preferences and prior false positives.
+- Add Slack app configuration docs.
+- Implement real Slack posting behind `ActionBackend`.
+- Add Slack signing-secret verification.
+- Add approval callback endpoint.
+- Add idempotent approval handling.
 - Add mock ticket creation after approval.
-
-Deliverables:
-
-- Slack alert or mock Slack output.
-- Approval-gated mock ticket creation.
-- Report generation.
-- Memory-influenced decisions.
+- Add false-positive handling and audit event.
+- Ensure Slack payloads contain only safe snippets and permission-safe links.
+- Add tests for approval state transitions and idempotency.
 
 Exit criteria:
 
-- The orchestrator can use memory, source evidence, and enterprise evidence to send an alert, request approval, create a mock ticket, and generate an audit report.
+- Vigil posts an alert, receives approval, creates a mock ticket once, and records the full audit trail.
 
-## 10. Phase 6: Google Cloud Production Readiness
+## 10. Phase: Agent Runtime Readiness
+
+Status: planned
 
 Goal:
 
-Prepare Vigil for Gemini Enterprise Agent Platform and production deployment.
+Prepare Vigil for Gemini Enterprise Agent Platform deployment.
 
 Tasks:
 
-- Ensure ADK agent entrypoint is clean and deployable.
-- Add production settings profile.
-- Add service account documentation.
-- Add Secret Manager documentation.
-- Add logging and tracing guidance.
-- Prepare Agent Runtime deployment path.
-- Prepare Agent Platform Sessions and Memory Bank integration points.
-- Evaluate Agents CLI scaffold/evaluate/deploy/publish flow.
-- Document Cloud Run fallback path if Agent Runtime setup blocks progress.
-- Add Agent Card / marketplace-readiness metadata.
-
-Deliverables:
-
-- Production deployment notes.
-- Agent Runtime readiness checklist.
-- Agent Card draft.
-- Cloud Run fallback instructions.
-- Security and IAM checklist.
+- Run `agents-cli update`.
+- Review `agents-cli info` and project metadata.
+- Run `agents-cli scaffold upgrade` if needed for current CLI compatibility.
+- Run `agents-cli scaffold enhance . --deployment-target agent_runtime` when the local MVP passes evals.
+- Configure service account roles.
+- Move secrets to Secret Manager.
+- Configure Cloud Logging and Cloud Trace.
+- Prepare Agent Platform Sessions.
+- Defer Memory Bank until recurring organization preferences are implemented.
+- Keep Cloud Run as fallback only if Agent Runtime blocks hackathon delivery.
 
 Exit criteria:
 
-- The project has a clear path from local `uv` development to Agent Runtime deployment with production secrets, service account auth, and managed retrieval.
+- Vigil has a clean Agent Runtime deployment path with environment configuration, secrets plan, IAM checklist, and logging/tracing expectations.
 
-## 11. Phase 7: Demo and Evaluation Package
+## 11. Phase: Hackathon Demo Package
+
+Status: planned
 
 Goal:
 
-Package the project for the hackathon.
+Package the work so judges understand the business result, not just the agent internals.
 
 Tasks:
 
-- Create a polished demo scenario.
-- Add demo data.
-- Add repeatable demo script.
-- Add evaluation scenarios.
+- Write a crisp README demo path.
+- Add one-command local demo instructions.
 - Add architecture diagram.
-- Add README updates.
-- Record demo video.
-
-Deliverables:
-
-- Demo script.
-- Demo dataset.
-- Evaluation results.
-- Architecture diagram.
-- Submission README.
-- Video narrative.
+- Add demo narrative:
+  - source update
+  - extracted obligations
+  - affected internal artifacts
+  - Slack approval
+  - audit trail
+- Add screenshots or terminal output snippets.
+- Add eval results summary.
+- Prepare a short video script.
 
 Exit criteria:
 
-- A judge can understand the business problem, watch Vigil perform the workflow, and see clear usage of ADK and Gemini Enterprise Agent Platform concepts.
+- A judge can run or watch Vigil complete the regulatory impact loop and see clear use of ADK, Gemini, structured outputs, RAG-ready retrieval, and Google Cloud production primitives.
 
-## 12. Suggested Repository Structure
+## 12. Deferred Work
 
-```text
-vigil/
-  app/
-    agents/
-      orchestrator.py
-      source_monitoring.py
-      enterprise_context.py
-    tools/
-      slack.py
-      reports.py
-      audit.py
-      ticketing.py
-    backends/
-      source/
-      retrieval/
-      memory/
-      actions/
-    schemas/
-    settings.py
-    main.py
-  data/
-    demo_sources/
-    demo_enterprise_docs/
-  docs/
-    vigil-system-design.md
-    vigil-phased-plan.md
-    vigil-implementation-plan.md
-  evals/
-  tests/
-  .env.example
-  README.md
-  pyproject.toml
-```
+These are valuable, but not part of the immediate MVP:
 
-## 13. Immediate Next Steps
+- Memory Bank integration for durable organization preferences.
+- Google Drive MCP for preview/refresh workflows.
+- Slack search or Gemini Enterprise Slack federation as an enterprise retrieval source.
+- Real Jira, Linear, ServiceNow, or GitHub issue creation.
+- Scheduled monitoring jobs.
+- Multimodal retrieval over slides, screenshots, audio, and PDFs.
+- Model Armor or policy filters before external Slack posting.
+- Marketplace packaging and full Gemini Enterprise registration.
 
-1. Add `.env.example`.
-2. Add core dependencies to `pyproject.toml` after confirming exact ADK package names.
-3. Create package structure.
-4. Define Pydantic schemas for subagent outputs.
-5. Implement local mock backends.
-6. Implement first orchestrator-subagent loop.
-7. Add one local demo command.
+## 13. Working Definition Of Done
+
+For each implementation phase, do not consider it complete until:
+
+- The code path is behind a stable interface or environment switch.
+- Unit tests cover deterministic behavior and failure cases.
+- At least one integration test covers the end-to-end path.
+- ADK evals cover expected agent behavior.
+- Citations and uncertainty are preserved.
+- External actions are either mocked or approval-gated.
+- The docs explain how to run, configure, and verify the feature.
+
+## 14. Recommended Next Engineering Task
+
+Implement local audit persistence and explicit approval/ticket state in the orchestrator path.
+
+Why this is next:
+
+- Source extraction is now structured.
+- Local retrieval exists.
+- Slack payload building exists.
+- The biggest remaining product gap is the operational loop: decision, approval requirement, ticket gating, and audit record.
+
+Suggested order:
+
+1. Extend `ImpactDecision` or add an approval/ticket model.
+2. Persist audit events for each local analysis step.
+3. Add mock ticket creation that refuses to run without approval.
+4. Update Slack payload tests around approval state.
+5. Add eval cases for irrelevant and ambiguous updates.
