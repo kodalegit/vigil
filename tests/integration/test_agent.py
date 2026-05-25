@@ -5,6 +5,7 @@ from google.adk.workflow import Workflow
 from vigil.agent import (
     analyze_regulatory_sources,
     app,
+    approve_impact_decision,
     commit_approved_context_update,
     get_current_profile,
     map_enterprise_context,
@@ -41,6 +42,7 @@ def test_context_and_memory_tools_are_exposed_on_root_agent() -> None:
 
     assert {
         "get_current_profile",
+        "approve_impact_decision",
         "propose_context_update",
         "validate_context_update",
         "commit_approved_context_update",
@@ -99,6 +101,29 @@ async def test_regulatory_impact_tool_returns_eu_ai_act_decision() -> None:
     assert decision["action_results"]
     assert any(result["action"] == "create_ticket" for result in decision["action_results"])
     assert any(event["event_type"] == "ticket_blocked" for event in decision["audit_events"])
+
+
+async def test_approval_tool_creates_ticket_after_human_approval() -> None:
+    decision = await run_regulatory_impact_analysis(
+        query="EU AI Act high-risk AI deployer obligations"
+    )
+
+    approved = await approve_impact_decision(
+        decision,
+        approved_by="compliance-lead",
+        idempotency_key="ticket:integration-approval",
+    )
+    replay = await approve_impact_decision(
+        approved,
+        approved_by="compliance-lead",
+        idempotency_key="ticket:integration-approval",
+    )
+
+    assert approved["approval_status"] == "approved"
+    assert approved["ticket_status"] == "created"
+    assert approved["ticket_id"]
+    assert replay["ticket_id"] == approved["ticket_id"]
+    assert any(event["event_type"] == "ticket_created" for event in approved["audit_events"])
 
 
 async def test_context_tools_require_approval_before_commit_and_memory_write() -> None:

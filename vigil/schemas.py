@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -297,15 +298,20 @@ class ActionResult(BaseModel):
     action: str
     success: bool
     message: str
+    external_id: str | None = None
+    idempotency_key: str | None = None
 
 
 class AuditEvent(BaseModel):
+    event_id: str = Field(default_factory=lambda: f"audit-{uuid4().hex[:12]}")
     event_type: str
     message: str
     metadata: dict[str, str] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ImpactDecision(BaseModel):
+    analysis_id: str = Field(default_factory=lambda: f"analysis-{uuid4().hex[:12]}")
     org_id: str = "default-org"
     is_actionable: bool
     risk_level: RiskLevel
@@ -318,6 +324,9 @@ class ImpactDecision(BaseModel):
     approval_required: bool = False
     approval_status: Literal["not_required", "pending", "approved", "rejected"] = "not_required"
     ticket_status: Literal["not_required", "blocked_pending_approval", "created"] = "not_required"
+    approved_by: str | None = None
+    approved_at: datetime | None = None
+    ticket_id: str | None = None
     audit_events: list[AuditEvent] = Field(default_factory=list)
     slack_channel: str | None = None
     reviewer_user_ids: list[str] = Field(default_factory=list)

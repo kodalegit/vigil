@@ -11,6 +11,7 @@ from vigil.backends import create_backends
 from vigil.backends.org_context import build_context_update_proposal
 from vigil.schemas import (
     AuditEvent,
+    ImpactDecision,
     MemoryWriteProposal,
     MonitoringInstruction,
     SourceFinding,
@@ -136,6 +137,33 @@ async def run_regulatory_impact_analysis(
     )
     decision = await VigilOrchestrator().analyze(instruction)
     return decision.model_dump(mode="json")
+
+
+async def approve_impact_decision(
+    decision: dict,
+    approved_by: str,
+    approved: bool = True,
+    idempotency_key: str | None = None,
+) -> dict:
+    """Record human approval or rejection for a pending impact decision.
+
+    Args:
+        decision: Impact decision returned by run_regulatory_impact_analysis.
+        approved_by: Human reviewer identifier.
+        approved: Whether the reviewer approved remediation ticket creation.
+        idempotency_key: Optional key to make approval/ticket creation replay-safe.
+
+    Returns:
+        Updated impact decision with approval, ticket, action, and audit state.
+    """
+    parsed_decision = ImpactDecision.model_validate(decision)
+    approved_decision = await VigilOrchestrator().record_approval(
+        parsed_decision,
+        approved_by=approved_by,
+        approved=approved,
+        idempotency_key=idempotency_key,
+    )
+    return approved_decision.model_dump(mode="json")
 
 
 async def get_current_profile(org_id: str = "default-org") -> dict:
@@ -471,6 +499,8 @@ root_agent = Agent(
         "artifacts. You own the final synthesis, impact classification, recommended "
         "actions, approval status, and audit narrative. Do not present legal advice "
         "as final counsel. Require human approval before remediation ticket creation. "
+        "When a reviewer approves or rejects an actionable decision, call "
+        "approve_impact_decision with the pending decision and reviewer identity. "
         "For onboarding or context refinement, inspect the current profile, draft a "
         "context update proposal, show the diff, validate it, and commit it only after "
         "explicit human approval. Durable memories are advisory and must only be written "
@@ -479,6 +509,7 @@ root_agent = Agent(
     tools=[
         agent_tool.AgentTool(agent=source_monitoring_agent),
         agent_tool.AgentTool(agent=enterprise_context_agent),
+        FunctionTool(func=approve_impact_decision),
         FunctionTool(func=get_current_profile),
         FunctionTool(func=propose_context_update),
         FunctionTool(func=validate_context_update),

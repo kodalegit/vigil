@@ -25,7 +25,7 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
     source: SourceBackend
     retrieval: RetrievalBackend
     actions: ActionBackend = MockActionBackend()
-    audit: AuditBackend = LocalAuditBackend()
+    audit: AuditBackend = LocalAuditBackend(settings.vigil_audit_log_path)
     org_context: OrgContextRegistry = LocalOrgContextRegistry()
     memory: MemoryBackend
 

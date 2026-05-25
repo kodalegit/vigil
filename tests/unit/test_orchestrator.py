@@ -4,6 +4,7 @@ from vigil.backends.actions import MockActionBackend
 from vigil.backends.audit import LocalAuditBackend
 from vigil.backends.memory import LocalMemoryBackend
 from vigil.backends.org_context import LocalOrgContextRegistry, build_context_update_proposal
+from vigil.backends.retrieval import LocalRetrievalBackend
 from vigil.schemas import (
     EnterpriseFinding,
     MonitoringInstruction,
@@ -154,3 +155,45 @@ async def test_orchestrator_uses_approved_org_context_and_false_positive_invento
     assert decision.classification == "irrelevant"
     assert decision.slack_channel == "#legal-review"
     assert any(event.event_type == "context_loaded" for event in audit.events)
+
+
+async def test_orchestrator_records_approval_and_creates_ticket_once() -> None:
+    audit = LocalAuditBackend()
+    orchestrator = VigilOrchestrator(
+        backends=BackendBundle(
+            source=ObligationOnlySourceBackend(),
+            retrieval=LocalRetrievalBackend(top_k=3),
+            actions=MockActionBackend(),
+            audit=audit,
+            org_context=LocalOrgContextRegistry(),
+            memory=LocalMemoryBackend(),
+        )
+    )
+    decision = await orchestrator.analyze(
+        MonitoringInstruction(query="EU AI Act deployer obligations")
+    )
+
+    approved = await orchestrator.record_approval(
+        decision,
+        approved_by="compliance-lead",
+        idempotency_key="ticket:test-approval",
+    )
+    replay = await orchestrator.record_approval(
+        approved,
+        approved_by="compliance-lead",
+        idempotency_key="ticket:test-approval",
+    )
+
+    assert approved.approval_status == "approved"
+    assert approved.ticket_status == "created"
+    assert approved.ticket_id
+    assert replay.ticket_id == approved.ticket_id
+    assert len(
+        [
+            result
+            for result in approved.action_results
+            if result.action == "create_ticket" and result.success
+        ]
+    ) == 1
+    assert any(event.event_type == "ticket_created" for event in audit.events)
+    assert any(event.event_type == "approval_idempotent_replay" for event in audit.events)

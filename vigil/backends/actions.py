@@ -1,4 +1,5 @@
 from typing import Protocol
+from uuid import uuid4
 
 from vigil.schemas import ActionResult, ImpactDecision
 
@@ -8,7 +9,15 @@ class ActionBackend(Protocol):
 
     async def generate_report(self, decision: ImpactDecision) -> ActionResult: ...
 
-    async def create_ticket(self, decision: ImpactDecision, approved: bool = False) -> ActionResult: ...
+    async def create_ticket(
+        self,
+        decision: ImpactDecision,
+        approved: bool = False,
+        idempotency_key: str | None = None,
+    ) -> ActionResult: ...
+
+
+_MOCK_TICKETS: dict[str, str] = {}
 
 
 class MockActionBackend:
@@ -30,13 +39,24 @@ class MockActionBackend:
             message="Mock cited report generated.",
         )
 
-    async def create_ticket(self, decision: ImpactDecision, approved: bool = False) -> ActionResult:
+    async def create_ticket(
+        self,
+        decision: ImpactDecision,
+        approved: bool = False,
+        idempotency_key: str | None = None,
+    ) -> ActionResult:
+        idempotency_key = idempotency_key or f"ticket:{decision.analysis_id}"
         if not approved:
             return ActionResult(
                 action="create_ticket",
                 success=False,
                 message="Mock ticket creation blocked until human approval is recorded.",
+                idempotency_key=idempotency_key,
             )
+        ticket_id = _MOCK_TICKETS.setdefault(
+            idempotency_key,
+            f"mock-ticket-{uuid4().hex[:8]}",
+        )
         return ActionResult(
             action="create_ticket",
             success=True,
@@ -44,6 +64,8 @@ class MockActionBackend:
                 "Mock remediation ticket created for "
                 f"{len(_affected_artifacts(decision))} affected artifact snippets."
             ),
+            external_id=ticket_id,
+            idempotency_key=idempotency_key,
         )
 
 

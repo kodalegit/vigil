@@ -214,6 +214,7 @@ slack.request_approval
 reports.generate_report
 audit.record_event
 ticketing.create_mock_ticket
+approval.record_decision
 ```
 
 Source monitoring subagent tools:
@@ -277,6 +278,7 @@ Minimum `audit.record_event` schema:
 
 ```json
 {
+  "event_id": "string",
   "event_type": "REG_CHANGE_DETECTED|ALERT_SENT|APPROVED|TICKET_CREATED|FALSE_POSITIVE_RECORDED",
   "external_sources": [
     {
@@ -300,6 +302,9 @@ Minimum `audit.record_event` schema:
 ```
 
 This audit trail should make it possible to reconstruct what changed, why Vigil believed it mattered, which internal artifacts were implicated, who approved action, and what ticket was created.
+
+The local implementation records audit events in memory and can append them to JSONL
+for repeatable demos. Production should replace this with durable audit storage.
 
 ## 8. Retrieval and RAG Strategy
 

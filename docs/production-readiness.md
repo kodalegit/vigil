@@ -100,8 +100,8 @@ For production, implement operational Slack behind `ActionBackend` first. Treat 
 
 ## Next Implementation Milestones
 
-1. Replace mock enterprise retrieval with a local document corpus and metadata-aware search.
-2. Add real Slack mock-to-real boundary: payload builder, signing verification, and approval callback model.
-3. Add source-monitoring backend that can use Gemini grounded search or configured official URLs.
+1. Harden local retrieval with metadata filters, score thresholds, no-match behavior, and citation quality tests.
+2. Add Gemini web source robustness around allowlists, source dates, ambiguity, and mocked grounded-search failures.
+3. Add real Slack mock-to-real boundary: posting, signing verification, and callback endpoint wired into the approval path.
 4. Add Agent Runtime scaffold and verify deploy in a dev project.
-5. Add Agent Platform Sessions and Memory Bank once deployed or when local SDK support is configured.
+5. Smoke test Agent Platform Sessions and Google Memory Bank once Agent Runtime identifiers and IAM are available.

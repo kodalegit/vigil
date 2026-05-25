@@ -1,4 +1,5 @@
 from vigil.backends.actions import build_slack_alert_payload
+from vigil.backends.actions import MockActionBackend
 from vigil.schemas import (
     Citation,
     EnterpriseChunk,
@@ -68,3 +69,34 @@ def test_slack_payload_is_approval_oriented_and_snippet_limited() -> None:
     assert "Approve & create ticket" in payload["buttons"]
     assert payload["affected_artifacts"][0]["owner"] == "Head of AI Governance"
     assert len(payload["affected_artifacts"][0]["snippet"]) <= 220
+
+
+async def test_mock_ticket_creation_is_approval_gated_and_idempotent() -> None:
+    decision = ImpactDecision(
+        analysis_id="analysis-idempotent",
+        is_actionable=True,
+        risk_level=RiskLevel.high,
+        classification="actionable",
+        summary="Actionable update.",
+        approval_required=True,
+        approval_status="pending",
+        ticket_status="blocked_pending_approval",
+    )
+    backend = MockActionBackend()
+
+    blocked = await backend.create_ticket(decision, approved=False)
+    first = await backend.create_ticket(
+        decision,
+        approved=True,
+        idempotency_key="ticket:analysis-idempotent",
+    )
+    replay = await backend.create_ticket(
+        decision,
+        approved=True,
+        idempotency_key="ticket:analysis-idempotent",
+    )
+
+    assert blocked.success is False
+    assert first.success is True
+    assert first.external_id
+    assert replay.external_id == first.external_id

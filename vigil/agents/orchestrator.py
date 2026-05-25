@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from vigil.agents.enterprise_context import EnterpriseContextAgent
 from vigil.agents.source_monitoring import SourceMonitoringAgent
 from vigil.backends import BackendBundle, create_backends
@@ -159,13 +161,18 @@ class VigilOrchestrator:
             ticket_result = await self.backends.actions.create_ticket(
                 decision,
                 approved=False,
+                idempotency_key=_ticket_idempotency_key(decision),
             )
             decision.action_results.append(ticket_result)
             await self._record_audit(
                 audit_events,
                 event_type="ticket_blocked",
                 message="Remediation ticket creation was blocked pending human approval.",
-                metadata={"success": str(ticket_result.success)},
+                metadata={
+                    "analysis_id": decision.analysis_id,
+                    "success": str(ticket_result.success),
+                    "idempotency_key": ticket_result.idempotency_key or "",
+                },
             )
 
         await self._record_audit(
@@ -182,6 +189,112 @@ class VigilOrchestrator:
         decision.audit_events = audit_events
 
         return decision
+
+    async def record_approval(
+        self,
+        decision: ImpactDecision,
+        approved_by: str,
+        approved: bool = True,
+        idempotency_key: str | None = None,
+    ) -> ImpactDecision:
+        audit_events = list(decision.audit_events)
+        idempotency_key = idempotency_key or _ticket_idempotency_key(decision)
+        if not decision.approval_required:
+            await self._record_audit(
+                audit_events,
+                event_type="approval_not_required",
+                message="Approval callback ignored because approval is not required.",
+                metadata={
+                    "analysis_id": decision.analysis_id,
+                    "approved_by": approved_by,
+                },
+            )
+            return decision.model_copy(update={"audit_events": audit_events})
+        if not approved:
+            await self._record_audit(
+                audit_events,
+                event_type="approval_rejected",
+                message="Human rejected remediation ticket creation.",
+                metadata={
+                    "analysis_id": decision.analysis_id,
+                    "approved_by": approved_by,
+                },
+            )
+            return decision.model_copy(
+                update={
+                    "approval_status": "rejected",
+                    "ticket_status": "not_required",
+                    "approved_by": approved_by,
+                    "approved_at": datetime.now(UTC),
+                    "audit_events": audit_events,
+                }
+            )
+        if decision.ticket_status == "created" and decision.ticket_id:
+            await self._record_audit(
+                audit_events,
+                event_type="approval_idempotent_replay",
+                message="Approval callback replayed after ticket was already created.",
+                metadata={
+                    "analysis_id": decision.analysis_id,
+                    "approved_by": approved_by,
+                    "ticket_id": decision.ticket_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+            return decision.model_copy(
+                update={
+                    "approval_status": "approved",
+                    "approved_by": decision.approved_by or approved_by,
+                    "approved_at": decision.approved_at or datetime.now(UTC),
+                    "audit_events": audit_events,
+                }
+            )
+
+        approved_decision = decision.model_copy(
+            update={
+                "approval_status": "approved",
+                "approved_by": approved_by,
+                "approved_at": datetime.now(UTC),
+            },
+            deep=True,
+        )
+        await self._record_audit(
+            audit_events,
+            event_type="approval_received",
+            message="Human approved remediation ticket creation.",
+            metadata={
+                "analysis_id": decision.analysis_id,
+                "approved_by": approved_by,
+                "idempotency_key": idempotency_key,
+            },
+        )
+        ticket_result = await self.backends.actions.create_ticket(
+            approved_decision,
+            approved=True,
+            idempotency_key=idempotency_key,
+        )
+        approved_decision.action_results.append(ticket_result)
+        ticket_status = "created" if ticket_result.success else approved_decision.ticket_status
+        await self._record_audit(
+            audit_events,
+            event_type="ticket_created" if ticket_result.success else "ticket_failed",
+            message=ticket_result.message,
+            metadata={
+                "analysis_id": decision.analysis_id,
+                "approved_by": approved_by,
+                "ticket_id": ticket_result.external_id or "",
+                "idempotency_key": idempotency_key,
+                "success": str(ticket_result.success),
+            },
+        )
+        return approved_decision.model_copy(
+            update={
+                "ticket_status": ticket_status,
+                "ticket_id": ticket_result.external_id,
+                "audit_events": audit_events,
+            },
+            deep=True,
+        )
 
     async def _record_audit(
         self,
@@ -315,6 +428,10 @@ def _count_chunks(enterprise_findings: list[EnterpriseFinding]) -> int:
 
 def _count_mappings(enterprise_findings: list[EnterpriseFinding]) -> int:
     return sum(len(finding.mappings) for finding in enterprise_findings)
+
+
+def _ticket_idempotency_key(decision: ImpactDecision) -> str:
+    return f"ticket:{decision.org_id}:{decision.analysis_id}"
 
 
 def _all_obligations_are_approved_false_positives(

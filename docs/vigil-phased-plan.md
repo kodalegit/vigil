@@ -1,6 +1,6 @@
 # Vigil Phased Implementation Plan
 
-Last updated: 2026-05-23
+Last updated: 2026-05-25
 
 This plan tracks what has actually been built, what design decisions are now settled, and what remains before Vigil is ready for a credible hackathon demo and a Google Cloud production path. It supports the system design in `docs/vigil-system-design.md`.
 
@@ -254,19 +254,19 @@ Implemented:
 - Slack payload builder with approval buttons.
 - Safe snippet truncation for Slack payloads.
 - Basic mock report result.
-- Basic local audit backend exists.
+- Local audit backend with optional JSONL persistence.
+- Approval callback path that creates a mock ticket after human approval.
+- Idempotency keys for approval-driven mock ticket creation.
 
 Still needed:
 
 - Google Memory Bank deployment smoke test after Agent Runtime identifiers and IAM are available.
 - Persisted org context registry storage beyond local process memory.
-- Real audit storage schema and persisted records.
-- Explicit audit events for analysis started, source searched, retrieval completed, alert prepared, approval requested, approval received, ticket created, and false positive recorded.
+- Production audit storage backend beyond local JSONL.
+- Explicit audit event for false positive recorded.
 - Real Slack app integration.
 - Slack request signing verification.
-- Approval callback model.
-- Idempotency keys for approval and ticket creation.
-- Mock ticket creation flow after approval.
+- Slack approval callback endpoint that calls the approval path.
 
 ### 3.7 Tests And Evals
 
@@ -278,18 +278,19 @@ Implemented:
 - Unit tests for local retrieval.
 - Unit tests for Slack payload safety.
 - Integration tests for agent structure and local analysis loop.
+- Unit tests for local audit persistence.
+- Unit and integration tests for approval-gated ticket creation and idempotency.
 - Basic ADK evalset for the EU AI Act happy path.
 
 Most recent verified commands:
 
 ```text
-uv run --extra dev pytest -s tests/unit/test_source.py
-uv run --extra dev pytest -s tests/unit tests/integration/test_agent.py
-uv run --extra dev ruff check .
+bash -ic 'uv run pytest -s'
+bash -ic 'uv run ruff check vigil tests'
 agents-cli eval run --evalset tests/eval/evalsets/basic.evalset.json --config tests/eval/eval_config.json
 ```
 
-Latest known result: unit/integration tests, lint, and the basic ADK eval passed.
+Latest known result: 32 unit/integration tests, lint, and the basic ADK eval pass on ADK 2.1.0.
 
 Known tooling note:
 
@@ -337,24 +338,29 @@ Implemented:
 - `approval_required`, `approval_status`, and `ticket_status` are included in the decision.
 - Actionable decisions mark approval as pending and ticket creation as blocked.
 - Mock ticket creation refuses to run unless approval is supplied.
+- Human approval can be recorded after analysis and creates one mock ticket using an idempotency key.
 - Audit events are attached to the returned decision and recorded through the audit backend.
+- Local audit events can be persisted to `.vigil/audit.jsonl`.
 - Audit events now cover:
   - analysis started
+  - context loaded
   - source searched
   - enterprise context retrieved
   - alert prepared
   - approval requested
   - ticket blocked
+  - approval received
+  - ticket created
+  - approval idempotent replay
   - analysis completed
 - Tests cover actionable, informational, and ambiguous local loop behavior.
 - The local demo command shows classification, approval state, ticket state, action results, and audit events.
 
 Tasks:
 
-- Add a repeatable demo command for the flagship EU AI Act scenario.
 - Add a second demo/eval case for an irrelevant or low-impact update.
 - Add a third demo/eval case for ambiguous source evidence.
-- Persist local audit events beyond process memory if we want the CLI demo to show an audit log file.
+- Add CLI ergonomics for approving a saved decision from a demo run, if we want a pure terminal approval demo.
 
 Exit criteria:
 
@@ -448,7 +454,7 @@ Exit criteria:
 
 ## 9. Phase: Slack, Approvals, Tickets, And Audit
 
-Status: planned
+Status: partially done
 
 Goal:
 
@@ -460,11 +466,10 @@ Tasks:
 - Implement real Slack posting behind `ActionBackend`.
 - Add Slack signing-secret verification.
 - Add approval callback endpoint.
-- Add idempotent approval handling.
-- Add mock ticket creation after approval.
+- Wire Slack approval callbacks into the idempotent approval path.
 - Add false-positive handling and audit event.
 - Ensure Slack payloads contain only safe snippets and permission-safe links.
-- Add tests for approval state transitions and idempotency.
+- Add tests for Slack signature verification and callback handling.
 
 Exit criteria:
 
@@ -488,7 +493,7 @@ Tasks:
 - Move secrets to Secret Manager.
 - Configure Cloud Logging and Cloud Trace.
 - Prepare Agent Platform Sessions.
-- Defer Memory Bank until recurring organization preferences are implemented.
+- Smoke test the Google Memory Bank backend after Agent Runtime identifiers and IAM are available.
 - Keep Cloud Run as fallback only if Agent Runtime blocks hackathon delivery.
 
 Exit criteria:
@@ -526,7 +531,8 @@ Exit criteria:
 
 These are valuable, but not part of the immediate MVP:
 
-- Memory Bank integration for durable organization preferences.
+- Production persistence for the typed org context registry.
+- Production validation of Google Memory Bank with Agent Runtime IAM.
 - Google Drive MCP for preview/refresh workflows.
 - Slack search or Gemini Enterprise Slack federation as an enterprise retrieval source.
 - Real Jira, Linear, ServiceNow, or GitHub issue creation.
@@ -549,19 +555,28 @@ For each implementation phase, do not consider it complete until:
 
 ## 14. Recommended Next Engineering Task
 
-Implement local audit persistence and explicit approval/ticket state in the orchestrator path.
+Implement retrieval quality hardening before real Slack.
 
 Why this is next:
 
-- Source extraction is now structured.
-- Local retrieval exists.
-- Slack payload building exists.
-- The biggest remaining product gap is the operational loop: decision, approval requirement, ticket gating, and audit record.
+- The operational approval loop now exists locally.
+- Source extraction and local retrieval work for the flagship path.
+- The biggest remaining demo risk is false-positive enterprise mapping from weak retrieval.
 
 Suggested order:
 
-1. Extend `ImpactDecision` or add an approval/ticket model.
-2. Persist audit events for each local analysis step.
-3. Add mock ticket creation that refuses to run without approval.
-4. Update Slack payload tests around approval state.
-5. Add eval cases for irrelevant and ambiguous updates.
+1. Add metadata filters to `RetrievalBackend.search`.
+2. Add richer local corpus metadata for jurisdiction, product, system class, owner, review cadence, and business unit.
+3. Add score thresholds so weak retrieval does not produce affected artifacts.
+4. Add irrelevant/no-match tests and eval cases.
+5. Then wire Slack callbacks into the approval path.
+
+## 15. One-Week Completion Gaps
+
+To call Vigil “complete” for the current scope, close these gaps in order:
+
+1. Retrieval quality: metadata filters, score thresholds, no-match behavior, citation quality tests.
+2. Source robustness: allowlist use in Gemini web prompts, freshness/date normalization, mocked Gemini edge-case tests.
+3. Slack workflow: signing verification, callback endpoint, approval wiring, false-positive audit flow.
+4. Runtime readiness: agents-cli upgrade/scaffold review, Agent Runtime config, IAM/secrets checklist, Memory Bank smoke test.
+5. Demo package: README runbook, one-command demo, eval summary, architecture diagram, short demo script.
