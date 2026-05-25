@@ -100,8 +100,8 @@ For production, implement operational Slack behind `ActionBackend` first. Treat 
 
 ## Next Implementation Milestones
 
-1. Add no-match and citation-quality ADK eval cases for the hardened local retrieval path.
-2. Add Gemini web source robustness around allowlists, source dates, ambiguity, and mocked grounded-search failures.
+1. Add Gemini web source robustness around duplicate findings across monitoring runs and mocked grounded-search/extraction failures.
+2. Add citation-quality ADK eval coverage that penalizes hallucinated owners or documents.
 3. Add real Slack mock-to-real boundary: posting, signing verification, and callback endpoint wired into the approval path.
 4. Add Agent Runtime scaffold and verify deploy in a dev project.
 5. Smoke test Agent Platform Sessions and Google Memory Bank once Agent Runtime identifiers and IAM are available.

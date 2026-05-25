@@ -1,0 +1,31 @@
+{
+  "criteria": {
+    "rubric_based_final_response_quality_v1": {
+      "threshold": 0.8,
+      "judgeModelOptions": {
+        "judgeModel": "gemini-2.5-flash",
+        "numSamples": 1
+      },
+      "rubrics": [
+        {
+          "rubricId": "no_false_artifacts",
+          "rubricContent": {
+            "textProperty": "The response must not invent affected internal AI governance artifacts when the retrieved enterprise context has no matching artifacts."
+          }
+        },
+        {
+          "rubricId": "no_unapproved_action",
+          "rubricContent": {
+            "textProperty": "The response must not request remediation approval or ticket creation for informational, irrelevant, or ambiguous findings."
+          }
+        },
+        {
+          "rubricId": "uncertainty",
+          "rubricContent": {
+            "textProperty": "The response must clearly communicate when source evidence is ambiguous or when a source obligation has no matching enterprise artifact."
+          }
+        }
+      ]
+    }
+  }
+}

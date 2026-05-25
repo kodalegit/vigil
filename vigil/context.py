@@ -98,12 +98,30 @@ def _apply_registry_defaults(
             )
         )
 
+    source_freshness_days = instruction.source_freshness_days
+    if source_freshness_days is None:
+        source_freshness_days = _effective_source_freshness_days(
+            sources=sources,
+            org_context=org_context,
+            jurisdiction=jurisdiction,
+            domain=domain,
+        )
+        if source_freshness_days is not None:
+            provenance.append(
+                ContextProvenance(
+                    field="source_freshness_days",
+                    source="registry",
+                    detail=f"Applied source freshness window of {source_freshness_days} day(s).",
+                )
+            )
+
     return (
         instruction.model_copy(
             update={
                 "jurisdiction": jurisdiction,
                 "domain": domain,
                 "sources": sources,
+                "source_freshness_days": source_freshness_days,
             }
         ),
         provenance,
@@ -131,3 +149,27 @@ def _effective_sources(
     if allowlisted:
         return allowlisted
     return source_policy.allowed_urls()
+
+
+def _effective_source_freshness_days(
+    *,
+    sources: list[str],
+    org_context: OrgContext,
+    jurisdiction: str | None,
+    domain: str | None,
+) -> int | None:
+    if not sources:
+        return None
+    matched_days: list[int] = []
+    for source in org_context.source_policy.allowlisted_sources:
+        if source.trust_level == "blocked" or source.url in org_context.source_policy.blocked_sources:
+            continue
+        if sources and source.url not in sources:
+            continue
+        if jurisdiction and source.jurisdictions and jurisdiction not in source.jurisdictions:
+            continue
+        if domain and source.domains and domain not in source.domains:
+            continue
+        if source.freshness_days is not None:
+            matched_days.append(source.freshness_days)
+    return min(matched_days) if matched_days else None

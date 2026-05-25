@@ -28,6 +28,7 @@ class MonitoringInstruction(BaseModel):
     jurisdiction: str | None = None
     domain: str | None = None
     sources: list[str] = Field(default_factory=list)
+    source_freshness_days: int | None = None
     org_id: str = "default-org"
     user_id: str | None = None
 

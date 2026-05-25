@@ -73,7 +73,8 @@ Responsibilities:
 - Identify new, changed, or newly relevant legal/compliance material.
 - Extract only the information requested by the orchestrator.
 - Return a compressed, cited synthesis.
-- Preserve source URLs, publication dates, quoted snippets, and confidence.
+- Preserve source URLs, normalized publication dates, retrieved timestamps, quoted snippets, and confidence.
+- Apply configured source freshness windows before treating dated source evidence as current.
 - Extract obligations as first-class structured objects.
 
 Output should answer:

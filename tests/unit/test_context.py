@@ -23,6 +23,7 @@ async def test_context_compiler_applies_registry_defaults_and_source_allowlist()
     assert pack.instruction.domain == "AI governance"
     assert pack.instruction.sources == []
     assert any(item.field == "sources" for item in pack.provenance)
+    assert pack.instruction.source_freshness_days is None
 
 
 async def test_context_compiler_uses_matching_allowlisted_source_when_none_requested() -> None:
@@ -40,6 +41,8 @@ async def test_context_compiler_uses_matching_allowlisted_source_when_none_reque
     )
 
     assert pack.instruction.sources == ["https://artificialintelligenceact.eu/"]
+    assert pack.instruction.source_freshness_days == 30
+    assert any(item.field == "source_freshness_days" for item in pack.provenance)
 
 
 async def test_local_memory_requires_explicit_approval() -> None:

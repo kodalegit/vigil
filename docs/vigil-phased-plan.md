@@ -1,6 +1,6 @@
 # Vigil Phased Implementation Plan
 
-Last updated: 2026-05-25
+Last updated: 2026-05-26
 
 This plan tracks what has actually been built, what design decisions are now settled, and what remains before Vigil is ready for a credible hackathon demo and a Google Cloud production path. It supports the system design in `docs/vigil-system-design.md`.
 
@@ -195,20 +195,25 @@ Status: partially done
 Implemented:
 
 - `MockSourceBackend` with deterministic EU AI Act-style obligations.
+- Deterministic mock scenarios for unrelated shipping obligations and ambiguous consultations.
 - `GeminiWebSourceBackend` using Gemini Google Search grounding.
+- Allowlist-aware Gemini grounded-search prompt construction from monitoring source policy.
+- Source freshness windows propagated from trusted source policy into monitoring instructions.
+- Grounded source date normalization for common web date formats.
+- Duplicate source evidence/citation removal and stale-source suppression guardrails.
 - Structured obligation extraction using model JSON output.
 - `ObligationExtractionResult` schema for extraction.
 - Conservative deterministic fallback when structured extraction fails.
 - Parser support for fenced JSON model output.
 - Confidence and uncertainty propagation.
+- Unit coverage for missing grounding snippets, allowlist prompt text, no-obligation ambiguity, unrelated source findings, source date normalization, and stale-source guardrails.
 
 Still needed:
 
-- Better official-source prompting and source allowlists.
 - Configurable monitored source sets.
-- Date/change detection for repeat monitoring.
-- Tests using mocked Gemini responses around grounding metadata and extraction failures.
-- Guardrails for source freshness and duplicate findings.
+- Change detection for repeat monitoring.
+- More mocked Gemini response tests around grounding metadata, source dates, and extraction failures.
+- Guardrails for materially duplicate findings across monitoring runs.
 
 ### 3.5 Enterprise Retrieval Backend
 
@@ -285,6 +290,7 @@ Implemented:
 - Unit tests for local audit persistence.
 - Unit and integration tests for approval-gated ticket creation and idempotency.
 - Basic ADK evalset for the EU AI Act happy path.
+- Retrieval-quality ADK evalset covering unrelated no-match obligations and ambiguous source evidence.
 
 Most recent verified commands:
 
@@ -292,9 +298,10 @@ Most recent verified commands:
 bash -ic 'uv run pytest -s'
 bash -ic 'uv run ruff check vigil tests'
 agents-cli eval run --evalset tests/eval/evalsets/basic.evalset.json --config tests/eval/eval_config.json
+agents-cli eval run --evalset tests/eval/evalsets/retrieval_quality.evalset.json --config tests/eval/retrieval_quality_config.json
 ```
 
-Latest known result: 36 unit/integration tests, lint, and the basic ADK eval pass on ADK 2.1.0.
+Latest known result: 43 unit/integration tests and lint pass on ADK 2.1.0. The basic and retrieval-quality ADK evals last passed before the freshness guardrail slice; the most recent rerun hung on the first Vertex model call and was interrupted before producing a result.
 
 Known tooling note:
 
@@ -359,11 +366,11 @@ Implemented:
   - analysis completed
 - Tests cover actionable, informational, and ambiguous local loop behavior.
 - The local demo command shows classification, approval state, ticket state, action results, and audit events.
+- Retrieval-quality eval covers unrelated no-match source obligations and ambiguous consultation evidence.
 
 Tasks:
 
 - Add a second demo/eval case for an irrelevant or low-impact update.
-- Add a third demo/eval case for ambiguous source evidence.
 - Add CLI ergonomics for approving a saved decision from a demo run, if we want a pure terminal approval demo.
 
 Exit criteria:
@@ -394,11 +401,11 @@ Implemented:
 - Added no-match behavior when candidate chunks do not map to obligations.
 - Add mapping rationale tests.
 - Added no-match local retrieval and orchestrator tests.
+- Added no-match and ambiguous-source ADK eval cases.
 
 Remaining tasks:
 
 - Improve chunking for sections, headings, tables, and short policy clauses.
-- Add “no matching enterprise artifact” test and eval.
 - Add citation quality eval that penalizes hallucinated owners or documents.
 
 Exit criteria:
@@ -408,7 +415,7 @@ Exit criteria:
 
 ## 7. Phase: Gemini Web Source Robustness
 
-Status: planned
+Status: in progress
 
 Goal:
 
@@ -416,16 +423,13 @@ Make `VIGIL_SOURCE_BACKEND=gemini_web` reliable enough for live demo use.
 
 Tasks:
 
-- Add source allowlist and trusted-source profiles.
-- Support official source preferences per jurisdiction/domain.
-- Normalize source dates and retrieved timestamps.
-- Detect ambiguity and return no obligations when evidence is insufficient.
+- Add configurable monitored source sets.
 - Add mocked Gemini response tests for:
   - valid structured output
   - fenced JSON
   - invalid JSON fallback
-  - no obligations found
-  - grounded results with missing snippets
+  - extraction model exceptions
+  - duplicate findings across monitoring runs
 - Add eval case for live web-backed source search if credentials are available.
 
 Exit criteria:
@@ -564,27 +568,28 @@ For each implementation phase, do not consider it complete until:
 
 ## 14. Recommended Next Engineering Task
 
-Implement retrieval quality hardening before real Slack.
+Implement Gemini web source robustness before real Slack.
 
 Why this is next:
 
 - The operational approval loop now exists locally.
 - Source extraction and local retrieval work for the flagship path.
-- The biggest remaining demo risk is false-positive enterprise mapping from weak retrieval.
+- Retrieval now rejects weak and unrelated enterprise matches with unit and eval coverage.
+- The biggest remaining demo risk is live source variability: stale dates, duplicate findings, and malformed grounded-search/extraction responses.
 
 Suggested order:
 
-1. Add irrelevant/no-match and citation-quality eval cases.
-2. Improve chunking for tables, very short clauses, and dense policy sections.
-3. Add RAG response normalization tests.
-4. Then move to source robustness and Slack callbacks.
+1. Expand mocked Gemini response tests for extraction exceptions and stale-source paths.
+2. Add duplicate-finding detection across monitoring runs.
+3. Add citation-quality eval coverage for hallucinated owners/documents.
+4. Then move to Slack callbacks and signature verification.
 
 ## 15. One-Week Completion Gaps
 
 To call Vigil “complete” for the current scope, close these gaps in order:
 
-1. Retrieval quality: metadata filters, score thresholds, no-match behavior, citation quality tests.
-2. Source robustness: allowlist use in Gemini web prompts, freshness/date normalization, mocked Gemini edge-case tests.
+1. Retrieval quality: citation quality eval and chunking improvements for tables, short clauses, and dense policy sections.
+2. Source robustness: duplicate finding guardrails across monitoring runs and mocked Gemini edge-case tests.
 3. Slack workflow: signing verification, callback endpoint, approval wiring, false-positive audit flow.
 4. Runtime readiness: agents-cli upgrade/scaffold review, Agent Runtime config, IAM/secrets checklist, Memory Bank smoke test.
 5. Demo package: README runbook, one-command demo, eval summary, architecture diagram, short demo script.

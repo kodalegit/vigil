@@ -1,0 +1,45 @@
+{
+  "eval_set_id": "vigil_retrieval_quality",
+  "name": "Vigil Retrieval Quality Evaluation",
+  "description": "Checks no-match and ambiguous scenarios so weak retrieval does not create false affected artifacts.",
+  "eval_cases": [
+    {
+      "eval_id": "unrelated_shipping_obligation_no_enterprise_match",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Analyze maritime ballast water discharge reporting for our AI governance controls."
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "vigil",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "ambiguous_consultation_no_obligations",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Analyze this ambiguous AI governance consultation for our SaaS controls."
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "vigil",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    }
+  ]
+}
