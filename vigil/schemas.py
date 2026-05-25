@@ -70,6 +70,10 @@ class EnterpriseDocument(BaseModel):
     title: str
     owner: str | None = None
     business_unit: str | None = None
+    jurisdiction: str | None = None
+    product: str | None = None
+    system_class: str | None = None
+    review_cadence: str | None = None
     artifact_type: Literal[
         "policy", "control", "sop", "contract", "meeting_note", "template", "inventory", "other"
     ] = "other"

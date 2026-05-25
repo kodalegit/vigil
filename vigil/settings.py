@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     vigil_source_backend: Literal["mock", "gemini_web"] = "mock"
     vigil_action_backend: Literal["mock", "slack"] = "mock"
     vigil_retrieval_top_k: int = 6
+    vigil_retrieval_min_score: float = 0.08
     vigil_rag_corpus: str | None = None
     vigil_rag_distance_threshold: float = 0.5
     google_genai_use_vertexai: bool = False

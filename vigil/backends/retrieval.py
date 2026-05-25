@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from vigil.schemas import (
     Citation,
@@ -19,20 +19,30 @@ class RetrievalBackend(Protocol):
         self,
         instruction: MonitoringInstruction,
         source_findings: list[SourceFinding],
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[EnterpriseFinding]: ...
 
 
 class LocalRetrievalBackend:
-    def __init__(self, corpus_dir: Path | None = None, top_k: int = 6) -> None:
+    def __init__(
+        self,
+        corpus_dir: Path | None = None,
+        top_k: int = 6,
+        min_score: float = 0.08,
+    ) -> None:
         self.corpus_dir = corpus_dir or Path(__file__).resolve().parents[1] / "data" / "corpus"
         self.top_k = top_k
+        self.min_score = min_score
 
     async def search(
         self,
         instruction: MonitoringInstruction,
         source_findings: list[SourceFinding],
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[EnterpriseFinding]:
         chunks = self._load_chunks()
+        filters = _metadata_filters(instruction, metadata_filters)
+        chunks = _filter_chunks(chunks, filters)
         queries = _retrieval_queries(instruction, source_findings)
         ranked_chunks = self._rank_chunks(chunks, queries)[: self.top_k]
         if not ranked_chunks:
@@ -44,6 +54,8 @@ class LocalRetrievalBackend:
             for obligation in finding.obligations
         ]
         mappings = _build_mappings(ranked_chunks, obligations)
+        if obligations and not mappings:
+            return []
         documents = _unique_documents(ranked_chunks)
         citations = [chunk.citation for chunk in ranked_chunks]
         affected_artifacts = [document.title for document in documents]
@@ -77,6 +89,10 @@ class LocalRetrievalBackend:
                 source_type="local",
                 uri=str(path),
                 last_reviewed_at=metadata.get("last_reviewed_at"),
+                jurisdiction=metadata.get("jurisdiction"),
+                product=metadata.get("product"),
+                system_class=metadata.get("system_class"),
+                review_cadence=metadata.get("review_cadence"),
             )
             chunks.extend(_chunk_markdown(document, body))
         return chunks
@@ -99,7 +115,7 @@ class LocalRetrievalBackend:
                 or any(term in chunk.text.lower() for term in _important_phrases(query))
             )
             score = min(1.0, (len(overlap) / max(len(expanded_terms), 1)) + phrase_bonus)
-            if score <= 0:
+            if score < self.min_score:
                 continue
             ranked.append(chunk.model_copy(update={"relevance_score": round(score, 3)}))
         return sorted(ranked, key=lambda item: item.relevance_score, reverse=True)
@@ -115,6 +131,7 @@ class RagEngineRetrievalBackend:
         self,
         instruction: MonitoringInstruction,
         source_findings: list[SourceFinding],
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[EnterpriseFinding]:
         from vertexai import rag
         import vertexai
@@ -135,22 +152,26 @@ class RagEngineRetrievalBackend:
             ),
         )
         chunks = _rag_response_to_chunks(response)
+        chunks = _filter_chunks(chunks, _metadata_filters(instruction, metadata_filters))
         if not chunks:
             return []
         documents = _unique_documents(chunks)
+        mappings = _build_mappings(
+            chunks,
+            [
+                obligation
+                for finding in source_findings
+                for obligation in finding.obligations
+            ],
+        )
+        if source_findings and not mappings:
+            return []
         return [
             EnterpriseFinding(
                 summary="RAG Engine retrieval returned enterprise context for the regulatory update.",
                 relevant_docs=documents,
                 chunks=chunks,
-                mappings=_build_mappings(
-                    chunks,
-                    [
-                        obligation
-                        for finding in source_findings
-                        for obligation in finding.obligations
-                    ],
-                ),
+                mappings=mappings,
                 affected_artifacts=[document.title for document in documents],
                 citations=[chunk.citation for chunk in chunks],
                 confidence=_average_score(chunks),
@@ -169,6 +190,51 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
         key, value = line.split(":", 1)
         metadata[key.strip()] = value.strip()
     return metadata, body.strip()
+
+
+def _metadata_filters(
+    instruction: MonitoringInstruction,
+    explicit_filters: dict[str, Any] | None,
+) -> dict[str, Any]:
+    filters = dict(explicit_filters or {})
+    if instruction.jurisdiction:
+        filters.setdefault("jurisdiction", instruction.jurisdiction)
+    return filters
+
+
+def _filter_chunks(
+    chunks: list[EnterpriseChunk],
+    filters: dict[str, Any],
+) -> list[EnterpriseChunk]:
+    if not filters:
+        return chunks
+    return [
+        chunk
+        for chunk in chunks
+        if all(_matches_filter(chunk.document, key, value) for key, value in filters.items())
+    ]
+
+
+def _matches_filter(document: EnterpriseDocument, key: str, value: Any) -> bool:
+    if value in (None, "", []):
+        return True
+    values = {str(item).lower() for item in value} if isinstance(value, list) else {str(value).lower()}
+    if key == "domain":
+        haystack = " ".join(
+            item or ""
+            for item in [
+                document.title,
+                document.artifact_type,
+                document.product,
+                document.system_class,
+                document.business_unit,
+            ]
+        ).lower()
+        return any(item in haystack for item in values)
+    candidate = getattr(document, key, None)
+    if candidate is None:
+        return True
+    return str(candidate).lower() in values
 
 
 def _chunk_markdown(document: EnterpriseDocument, body: str) -> list[EnterpriseChunk]:
@@ -245,7 +311,8 @@ def _build_mappings(
             reverse=True,
         )[:2]
         for chunk in best_chunks:
-            if not obligation_terms & set(_tokenize(chunk.text)):
+            overlap = obligation_terms & set(_tokenize(chunk.text))
+            if not overlap:
                 continue
             mappings.append(
                 ObligationMapping(
@@ -256,7 +323,9 @@ def _build_mappings(
                     section_ref=chunk.section_ref,
                     relevance_score=chunk.relevance_score,
                     reason=(
-                        f"Matches obligation topics: {', '.join(obligation.topics) or obligation.text}."
+                        "Matches obligation terms "
+                        f"{', '.join(sorted(overlap)[:5])} and topics: "
+                        f"{', '.join(obligation.topics) or obligation.text}."
                     ),
                 )
             )

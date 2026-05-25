@@ -4,6 +4,10 @@ title: AI System Inventory
 owner: AI Platform Lead
 business_unit: Engineering
 artifact_type: inventory
+jurisdiction: European Union
+product: AI system inventory
+system_class: mixed impact AI
+review_cadence: monthly
 last_reviewed_at: 2026-04-01
 ---
 

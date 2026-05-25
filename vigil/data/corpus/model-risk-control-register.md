@@ -4,6 +4,10 @@ title: Model Risk Control Register
 owner: Model Risk Lead
 business_unit: Risk
 artifact_type: control
+jurisdiction: European Union
+product: model risk controls
+system_class: high-impact AI
+review_cadence: quarterly
 last_reviewed_at: 2026-02-05
 ---
 

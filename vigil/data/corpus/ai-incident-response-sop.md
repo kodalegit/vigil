@@ -4,6 +4,10 @@ title: AI Incident Response SOP
 owner: Security Incident Commander
 business_unit: Security
 artifact_type: sop
+jurisdiction: European Union
+product: AI incident response
+system_class: high-risk AI
+review_cadence: semiannual
 last_reviewed_at: 2026-03-12
 ---
 

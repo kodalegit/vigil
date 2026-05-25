@@ -4,6 +4,10 @@ title: AI DPIA Template
 owner: Privacy Lead
 business_unit: Legal
 artifact_type: template
+jurisdiction: European Union
+product: AI privacy assessment
+system_class: high-risk AI
+review_cadence: annual
 last_reviewed_at: 2026-01-30
 ---
 

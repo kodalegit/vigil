@@ -4,6 +4,10 @@ title: AI Governance Policy
 owner: Head of AI Governance
 business_unit: Product
 artifact_type: policy
+jurisdiction: European Union
+product: AI governance controls
+system_class: high-risk AI
+review_cadence: quarterly
 last_reviewed_at: 2026-01-15
 ---
 

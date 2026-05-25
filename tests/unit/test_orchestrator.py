@@ -63,6 +63,33 @@ class AmbiguousSourceBackend:
         ]
 
 
+class UnrelatedObligationSourceBackend:
+    async def search(self, instruction: MonitoringInstruction) -> list[SourceFinding]:
+        return [
+            SourceFinding(
+                summary="Official source describes a shipping obligation.",
+                obligations=[
+                    RegulatoryObligation(
+                        id="obl-shipping",
+                        text="Report maritime ballast water discharge events to the port authority.",
+                        jurisdiction=instruction.jurisdiction or "European Union",
+                        topics=["shipping compliance"],
+                        risk_level="medium",
+                        source_quote="Vessels must report ballast discharge events.",
+                        confidence="high",
+                    )
+                ],
+                evidence=[
+                    SourceEvidence(
+                        title="Shipping source",
+                        snippet="Vessels must report ballast discharge events.",
+                    )
+                ],
+                confidence=0.8,
+            )
+        ]
+
+
 async def test_orchestrator_marks_obligations_without_internal_match_informational() -> None:
     audit = LocalAuditBackend()
     orchestrator = VigilOrchestrator(
@@ -108,6 +135,33 @@ async def test_orchestrator_marks_uncertain_source_without_obligations_ambiguous
     assert decision.risk_level.value == "medium"
     assert decision.approval_required is False
     assert "Ask for clarification" in decision.recommended_actions[0]
+
+
+async def test_orchestrator_does_not_create_false_positive_artifacts_for_unrelated_obligation() -> None:
+    audit = LocalAuditBackend()
+    orchestrator = VigilOrchestrator(
+        backends=BackendBundle(
+            source=UnrelatedObligationSourceBackend(),
+            retrieval=LocalRetrievalBackend(top_k=4, min_score=0.08),
+            actions=MockActionBackend(),
+            audit=audit,
+            org_context=LocalOrgContextRegistry(),
+            memory=LocalMemoryBackend(),
+        )
+    )
+
+    decision = await orchestrator.analyze(
+        MonitoringInstruction(
+            query="maritime ballast water discharge reporting",
+            jurisdiction="European Union",
+            domain="shipping compliance",
+        )
+    )
+
+    assert decision.classification == "informational"
+    assert decision.enterprise_findings == []
+    assert decision.approval_required is False
+    assert not any(result.action == "send_alert" for result in decision.action_results)
 
 
 async def test_orchestrator_uses_approved_org_context_and_false_positive_inventory() -> None:

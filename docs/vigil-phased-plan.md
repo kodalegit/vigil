@@ -221,6 +221,10 @@ Implemented:
 - Metadata-aware Markdown chunking.
 - Lightweight deterministic lexical retrieval with phrase/synonym expansion.
 - `ObligationMapping` generation from obligations to chunks.
+- Metadata filters by jurisdiction, artifact type, owner, product, system class, review cadence, and business unit for local retrieval.
+- Local corpus metadata for jurisdiction, product, system class, and review cadence.
+- Configurable local retrieval score threshold.
+- Retrieval drops candidate chunks when no obligation-to-chunk mapping survives.
 - Synthetic local corpus:
   - AI Governance Policy
   - Model Risk Control Register
@@ -233,8 +237,7 @@ Implemented:
 
 Still needed:
 
-- Metadata filters by jurisdiction, artifact type, owner, product, and business unit.
-- Better chunking and ranking.
+- Better chunking and ranking for tables, very short clauses, and dense policy sections.
 - Tests for RAG response normalization.
 - Real RAG Engine smoke test with a Google Cloud corpus.
 - Drive sharing documentation for the Vertex RAG Data Service Agent in the main README.
@@ -276,6 +279,7 @@ Implemented:
 
 - Unit tests for source extraction and fallback behavior.
 - Unit tests for local retrieval.
+- Unit tests for local retrieval metadata filters, score thresholds, no-match behavior, and mapping rationale.
 - Unit tests for Slack payload safety.
 - Integration tests for agent structure and local analysis loop.
 - Unit tests for local audit persistence.
@@ -290,7 +294,7 @@ bash -ic 'uv run ruff check vigil tests'
 agents-cli eval run --evalset tests/eval/evalsets/basic.evalset.json --config tests/eval/eval_config.json
 ```
 
-Latest known result: 32 unit/integration tests, lint, and the basic ADK eval pass on ADK 2.1.0.
+Latest known result: 36 unit/integration tests, lint, and the basic ADK eval pass on ADK 2.1.0.
 
 Known tooling note:
 
@@ -370,25 +374,30 @@ Exit criteria:
 
 ## 6. Phase: Retrieval Quality And Corpus Hardening
 
-Status: next after local loop tightening
+Status: in progress
 
 Goal:
 
 Make enterprise mapping strong enough that the demo feels like real RAG-backed compliance work.
 
-Tasks:
+Implemented:
 
-- Add metadata filters to `RetrievalBackend.search`.
-- Add richer metadata to local corpus docs:
+- Added metadata filters to `RetrievalBackend.search`.
+- Added richer metadata to local corpus docs:
   - jurisdiction
   - product
   - system class
   - owner
   - review cadence
   - business unit
-- Improve chunking for sections, headings, tables, and short policy clauses.
-- Add score thresholds so weak retrieval does not produce false affected artifacts.
+- Added score thresholds so weak retrieval does not produce false affected artifacts.
+- Added no-match behavior when candidate chunks do not map to obligations.
 - Add mapping rationale tests.
+- Added no-match local retrieval and orchestrator tests.
+
+Remaining tasks:
+
+- Improve chunking for sections, headings, tables, and short policy clauses.
 - Add “no matching enterprise artifact” test and eval.
 - Add citation quality eval that penalizes hallucinated owners or documents.
 
@@ -565,11 +574,10 @@ Why this is next:
 
 Suggested order:
 
-1. Add metadata filters to `RetrievalBackend.search`.
-2. Add richer local corpus metadata for jurisdiction, product, system class, owner, review cadence, and business unit.
-3. Add score thresholds so weak retrieval does not produce affected artifacts.
-4. Add irrelevant/no-match tests and eval cases.
-5. Then wire Slack callbacks into the approval path.
+1. Add irrelevant/no-match and citation-quality eval cases.
+2. Improve chunking for tables, very short clauses, and dense policy sections.
+3. Add RAG response normalization tests.
+4. Then move to source robustness and Slack callbacks.
 
 ## 15. One-Week Completion Gaps
 

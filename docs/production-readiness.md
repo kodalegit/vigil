@@ -100,7 +100,7 @@ For production, implement operational Slack behind `ActionBackend` first. Treat 
 
 ## Next Implementation Milestones
 
-1. Harden local retrieval with metadata filters, score thresholds, no-match behavior, and citation quality tests.
+1. Add no-match and citation-quality ADK eval cases for the hardened local retrieval path.
 2. Add Gemini web source robustness around allowlists, source dates, ambiguity, and mocked grounded-search failures.
 3. Add real Slack mock-to-real boundary: posting, signing verification, and callback endpoint wired into the approval path.
 4. Add Agent Runtime scaffold and verify deploy in a dev project.

@@ -37,7 +37,10 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
         raise NotImplementedError(f"Unknown source backend: {settings.vigil_source_backend}")
 
     if settings.vigil_retrieval_backend == "local":
-        retrieval = LocalRetrievalBackend(top_k=settings.vigil_retrieval_top_k)
+        retrieval = LocalRetrievalBackend(
+            top_k=settings.vigil_retrieval_top_k,
+            min_score=settings.vigil_retrieval_min_score,
+        )
     elif settings.vigil_retrieval_backend == "rag_engine":
         retrieval = RagEngineRetrievalBackend(settings)
     else:

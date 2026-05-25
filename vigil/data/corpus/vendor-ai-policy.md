@@ -4,6 +4,10 @@ title: Vendor AI Policy
 owner: Procurement Counsel
 business_unit: Procurement
 artifact_type: policy
+jurisdiction: European Union
+product: vendor AI governance
+system_class: high-impact AI
+review_cadence: annual
 last_reviewed_at: 2025-12-18
 ---
 
