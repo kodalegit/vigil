@@ -89,6 +89,12 @@ There are two separate Slack tracks:
 
 For production, implement operational Slack behind `ActionBackend` first. Treat federated Slack search as an enterprise retrieval source later.
 
+Slack request verification now follows Slack's signed-secret flow for interactive
+callbacks: raw body, `X-Slack-Request-Timestamp`, `X-Slack-Signature`, HMAC-SHA256,
+and a five-minute replay window. The current `/slack/interactions` endpoint verifies
+and acknowledges callbacks; wiring approval buttons into `record_approval` still needs
+a persisted decision lookup.
+
 ### Security And Governance
 
 - Require human approval before remediation actions.

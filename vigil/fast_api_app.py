@@ -12,15 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import os
 
 import google.auth
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from google.adk.cli.fast_api import get_fast_api_app
 from google.cloud import logging as google_cloud_logging
 
 from vigil.app_utils.telemetry import setup_telemetry
 from vigil.app_utils.typing import Feedback
+from vigil.settings import get_settings
+from vigil.slack import (
+    parse_slack_interaction_payload,
+    slack_action_id,
+    verify_slack_signature,
+)
 
 setup_telemetry()
 _, project_id = google.auth.default()
@@ -63,6 +70,51 @@ def collect_feedback(feedback: Feedback) -> dict[str, str]:
     """
     logger.log_struct(feedback.model_dump(), severity="INFO")
     return {"status": "success"}
+
+
+@app.post("/slack/interactions")
+async def handle_slack_interaction(request: Request) -> dict[str, str | None]:
+    """Verify and acknowledge Slack interactive callbacks."""
+    settings = get_settings()
+    if not settings.slack_signing_secret:
+        raise HTTPException(status_code=503, detail="Slack signing secret is not configured.")
+
+    body = await request.body()
+    if not verify_slack_signature(
+        signing_secret=settings.slack_signing_secret,
+        body=body,
+        timestamp=request.headers.get("X-Slack-Request-Timestamp"),
+        signature=request.headers.get("X-Slack-Signature"),
+    ):
+        raise HTTPException(status_code=401, detail="Invalid Slack signature.")
+
+    try:
+        payload = parse_slack_interaction_payload(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="Invalid Slack interaction payload.") from None
+
+    action_id = slack_action_id(payload)
+    logger.log_struct(
+        {
+            "event": "slack_interaction_verified",
+            "action_id": action_id,
+            "team_id": (
+                payload.get("team", {}).get("id")
+                if isinstance(payload.get("team"), dict)
+                else None
+            ),
+            "user_id": (
+                payload.get("user", {}).get("id")
+                if isinstance(payload.get("user"), dict)
+                else None
+            ),
+        },
+        severity="INFO",
+    )
+    return {
+        "status": "acknowledged",
+        "action_id": action_id,
+    }
 
 
 # Main execution

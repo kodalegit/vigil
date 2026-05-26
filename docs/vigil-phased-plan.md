@@ -273,8 +273,7 @@ Still needed:
 - Production audit storage backend beyond local JSONL.
 - Explicit audit event for false positive recorded.
 - Real Slack app integration.
-- Slack request signing verification.
-- Slack approval callback endpoint that calls the approval path.
+- Slack approval callback endpoint backed by a persisted decision store.
 
 ### 3.7 Tests And Evals
 
@@ -301,7 +300,7 @@ agents-cli eval run --evalset tests/eval/evalsets/basic.evalset.json --config te
 agents-cli eval run --evalset tests/eval/evalsets/retrieval_quality.evalset.json --config tests/eval/retrieval_quality_config.json
 ```
 
-Latest known result: 43 unit/integration tests and lint pass on ADK 2.1.0. The basic and retrieval-quality ADK evals last passed before the freshness guardrail slice; the most recent rerun hung on the first Vertex model call and was interrupted before producing a result.
+Latest known result: 45 unit/integration tests and lint pass on ADK 2.1.0. The basic and retrieval-quality ADK evals last passed before the freshness guardrail slice; the most recent rerun hung on the first Vertex model call and was interrupted before producing a result.
 
 Known tooling note:
 
@@ -477,12 +476,12 @@ Tasks:
 
 - Add Slack app configuration docs.
 - Implement real Slack posting behind `ActionBackend`.
-- Add Slack signing-secret verification.
-- Add approval callback endpoint.
+- Add Slack signing-secret verification. (Implemented for interactive callback requests.)
+- Add approval callback endpoint. (Initial verified callback acknowledgement implemented; approval wiring needs persisted decision lookup.)
 - Wire Slack approval callbacks into the idempotent approval path.
 - Add false-positive handling and audit event.
 - Ensure Slack payloads contain only safe snippets and permission-safe links.
-- Add tests for Slack signature verification and callback handling.
+- Add tests for Slack callback approval wiring once decision lookup is available.
 
 Exit criteria:
 
