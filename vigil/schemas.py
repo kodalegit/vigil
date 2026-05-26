@@ -29,6 +29,7 @@ class MonitoringInstruction(BaseModel):
     domain: str | None = None
     sources: list[str] = Field(default_factory=list)
     source_freshness_days: int | None = None
+    suppress_repeated_findings: bool = False
     org_id: str = "default-org"
     user_id: str | None = None
 
@@ -281,6 +282,7 @@ class SourceFinding(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
     confidence: float = 0.0
     uncertainty: str | None = None
+    is_duplicate: bool = False
 
 
 class EnterpriseFinding(BaseModel):

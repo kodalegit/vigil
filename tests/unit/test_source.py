@@ -4,6 +4,7 @@ from vigil.backends.source import (
     MockSourceBackend,
     _apply_source_quality_guardrails,
     _build_grounded_search_prompt,
+    _extract_obligations_with_model,
     _fallback_obligations_from_grounded_text,
     _grounding_evidence,
     _normalize_source_date,
@@ -274,3 +275,34 @@ def test_fallback_obligation_extraction_is_low_confidence() -> None:
 
     assert extraction.obligations == []
     assert extraction.confidence == 0.2
+
+
+async def test_extract_obligations_falls_back_when_model_raises() -> None:
+    class FailingModels:
+        async def generate_content(self, **kwargs):  # noqa: ANN003
+            raise RuntimeError("model unavailable")
+
+    client = SimpleNamespace(aio=SimpleNamespace(models=FailingModels()))
+    settings = SimpleNamespace(vigil_model="gemini-2.5-flash")
+
+    extraction = await _extract_obligations_with_model(
+        client=client,
+        settings=settings,
+        instruction=MonitoringInstruction(
+            query="EU AI Act deployer obligations",
+            jurisdiction="European Union",
+            domain="AI governance",
+        ),
+        grounded_text="Deployers must maintain human oversight and retain logs.",
+        evidence=[
+            SourceEvidence(
+                title="Official source",
+                url="https://official.example/ai-act",
+                snippet="Deployers must maintain human oversight and retain logs.",
+            )
+        ],
+    )
+
+    assert extraction.obligations
+    assert extraction.confidence == 0.45
+    assert "fallback" in (extraction.uncertainty or "")

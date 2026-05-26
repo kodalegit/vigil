@@ -251,3 +251,34 @@ async def test_orchestrator_records_approval_and_creates_ticket_once() -> None:
     ) == 1
     assert any(event.event_type == "ticket_created" for event in audit.events)
     assert any(event.event_type == "approval_idempotent_replay" for event in audit.events)
+
+
+async def test_orchestrator_downgrades_duplicate_source_obligations_across_runs() -> None:
+    audit = LocalAuditBackend()
+    orchestrator = VigilOrchestrator(
+        backends=BackendBundle(
+            source=ObligationOnlySourceBackend(),
+            retrieval=LocalRetrievalBackend(top_k=3),
+            actions=MockActionBackend(),
+            audit=audit,
+            org_context=LocalOrgContextRegistry(),
+            memory=LocalMemoryBackend(),
+        )
+    )
+    instruction = MonitoringInstruction(
+        query="EU AI Act deployer obligations",
+        org_id="repeat-org",
+        suppress_repeated_findings=True,
+    )
+
+    first = await orchestrator.analyze(instruction)
+    second = await orchestrator.analyze(instruction)
+
+    assert first.classification == "actionable"
+    assert second.classification == "informational"
+    assert second.source_findings[0].is_duplicate is True
+    assert second.source_findings[0].obligations == []
+    assert "duplicate" in second.summary
+    assert any(event.event_type == "source_finding_recorded" for event in audit.events)
+    assert any(event.event_type == "source_finding_duplicate" for event in audit.events)
+    assert not any(result.action == "send_alert" for result in second.action_results)

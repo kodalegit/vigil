@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from hashlib import sha256
 
 from vigil.agents.enterprise_context import EnterpriseContextAgent
 from vigil.agents.source_monitoring import SourceMonitoringAgent
@@ -13,6 +14,7 @@ from vigil.schemas import (
     ImpactDecision,
     MonitoringInstruction,
     OrgContext,
+    RegulatoryObligation,
     RiskLevel,
     SourceFinding,
 )
@@ -75,6 +77,11 @@ class VigilOrchestrator:
         )
 
         source_findings = await self.source_agent.search(instruction)
+        source_findings = await self._record_and_filter_duplicate_source_findings(
+            audit_events,
+            instruction,
+            source_findings,
+        )
         await self._record_audit(
             audit_events,
             event_type="source_searched",
@@ -311,6 +318,92 @@ class VigilOrchestrator:
         audit_events.append(event)
         await self.backends.audit.record(event)
 
+    async def _record_and_filter_duplicate_source_findings(
+        self,
+        audit_events: list[AuditEvent],
+        instruction: MonitoringInstruction,
+        source_findings: list[SourceFinding],
+    ) -> list[SourceFinding]:
+        if not instruction.suppress_repeated_findings:
+            return source_findings
+        seen_events = await self.backends.audit.list_events(
+            event_type="source_finding_recorded",
+            metadata={"org_id": instruction.org_id},
+        )
+        seen_fingerprints = {
+            event.metadata.get("fingerprint")
+            for event in seen_events
+            if event.metadata.get("fingerprint")
+        }
+        filtered_findings: list[SourceFinding] = []
+        for finding in source_findings:
+            duplicate_fingerprints: list[str] = []
+            new_obligations = []
+            for obligation in finding.obligations:
+                fingerprint = _source_obligation_fingerprint(instruction, obligation)
+                if fingerprint in seen_fingerprints:
+                    duplicate_fingerprints.append(fingerprint)
+                    continue
+                new_obligations.append(obligation)
+                seen_fingerprints.add(fingerprint)
+                await self._record_audit(
+                    audit_events,
+                    event_type="source_finding_recorded",
+                    message="Recorded source obligation fingerprint for repeat monitoring.",
+                    metadata={
+                        "org_id": instruction.org_id,
+                        "query": instruction.query,
+                        "obligation_id": obligation.id,
+                        "fingerprint": fingerprint,
+                    },
+                )
+
+            if duplicate_fingerprints:
+                await self._record_audit(
+                    audit_events,
+                    event_type="source_finding_duplicate",
+                    message="Detected duplicate source obligation from prior monitoring run.",
+                    metadata={
+                        "org_id": instruction.org_id,
+                        "query": instruction.query,
+                        "duplicate_count": str(len(duplicate_fingerprints)),
+                    },
+                )
+
+            if duplicate_fingerprints and not new_obligations and finding.obligations:
+                filtered_findings.append(
+                    finding.model_copy(
+                        update={
+                            "obligations": [],
+                            "confidence": min(finding.confidence, 0.35),
+                            "uncertainty": _append_uncertainty(
+                                finding.uncertainty,
+                                "This source finding matches a previously recorded monitoring finding.",
+                            ),
+                            "is_duplicate": True,
+                        }
+                    )
+                )
+                continue
+
+            if duplicate_fingerprints:
+                filtered_findings.append(
+                    finding.model_copy(
+                        update={
+                            "obligations": new_obligations,
+                            "uncertainty": _append_uncertainty(
+                                finding.uncertainty,
+                                "Some repeated obligations were removed before enterprise retrieval.",
+                            ),
+                            "is_duplicate": True,
+                        }
+                    )
+                )
+                continue
+
+            filtered_findings.append(finding)
+        return filtered_findings
+
 
 def _classify(
     source_findings: list[SourceFinding],
@@ -327,6 +420,8 @@ def _classify(
         context_pack.org_context,
     ):
         return "irrelevant"
+    if source_findings and _all_source_findings_are_duplicates(source_findings):
+        return "informational"
     if obligation_count > 0 and chunk_count > 0 and mapping_count > 0:
         return "actionable"
     if obligation_count > 0 and chunk_count == 0:
@@ -406,6 +501,11 @@ def _summary(
             f"{artifact_count} artifact(s). Human approval is required before ticket creation."
         )
     if classification == "informational":
+        if obligation_count == 0 and _all_source_findings_are_duplicates(source_findings):
+            return (
+                f"Vigil found only duplicate source finding(s) for {instruction.query}; "
+                "no new obligations were sent for enterprise impact mapping."
+            )
         return (
             f"Vigil found {obligation_count} source obligation(s) for {instruction.query}, "
             "but did not find matching enterprise artifacts in the current corpus."
@@ -432,6 +532,35 @@ def _count_mappings(enterprise_findings: list[EnterpriseFinding]) -> int:
 
 def _ticket_idempotency_key(decision: ImpactDecision) -> str:
     return f"ticket:{decision.org_id}:{decision.analysis_id}"
+
+
+def _source_obligation_fingerprint(
+    instruction: MonitoringInstruction,
+    obligation: RegulatoryObligation,
+) -> str:
+    material = "|".join(
+        [
+            instruction.org_id,
+            obligation.jurisdiction.lower(),
+            obligation.id.lower(),
+            obligation.section_id or "",
+            obligation.source_url or "",
+            " ".join(obligation.text.lower().split()),
+        ]
+    )
+    return sha256(material.encode("utf-8")).hexdigest()
+
+
+def _append_uncertainty(current: str | None, note: str) -> str:
+    if not current:
+        return note
+    if note in current:
+        return current
+    return f"{current} {note}"
+
+
+def _all_source_findings_are_duplicates(source_findings: list[SourceFinding]) -> bool:
+    return bool(source_findings) and all(finding.is_duplicate for finding in source_findings)
 
 
 def _all_obligations_are_approved_false_positives(
