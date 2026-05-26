@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 
-from vigil.backends.actions import ActionBackend, MockActionBackend
+from vigil.backends.actions import ActionBackend, MockActionBackend, SlackActionBackend
 from vigil.backends.audit import AuditBackend, LocalAuditBackend
+from vigil.backends.decisions import DecisionStore, LocalDecisionStore
 from vigil.backends.memory import GoogleMemoryBankBackend, LocalMemoryBackend, MemoryBackend
 from vigil.backends.org_context import LocalOrgContextRegistry, OrgContextRegistry
 from vigil.backends.retrieval import LocalRetrievalBackend, RagEngineRetrievalBackend, RetrievalBackend
@@ -17,6 +18,7 @@ class BackendBundle:
     audit: AuditBackend
     org_context: OrgContextRegistry | None = None
     memory: MemoryBackend | None = None
+    decisions: DecisionStore | None = None
 
 
 def create_backends(settings: Settings | None = None) -> BackendBundle:
@@ -24,8 +26,9 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
 
     source: SourceBackend
     retrieval: RetrievalBackend
-    actions: ActionBackend = MockActionBackend()
+    actions: ActionBackend
     audit: AuditBackend = LocalAuditBackend(settings.vigil_audit_log_path)
+    decisions: DecisionStore = LocalDecisionStore(settings.vigil_decision_store_path)
     org_context: OrgContextRegistry = LocalOrgContextRegistry()
     memory: MemoryBackend
 
@@ -46,8 +49,12 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
     else:
         raise NotImplementedError(f"Unknown retrieval backend: {settings.vigil_retrieval_backend}")
 
-    if settings.vigil_action_backend != "mock":
-        raise NotImplementedError("Only the mock action backend is implemented locally.")
+    if settings.vigil_action_backend == "mock":
+        actions = MockActionBackend()
+    elif settings.vigil_action_backend == "slack":
+        actions = SlackActionBackend(settings)
+    else:
+        raise NotImplementedError(f"Unknown action backend: {settings.vigil_action_backend}")
 
     if settings.vigil_memory_backend == "local":
         memory = LocalMemoryBackend()
@@ -63,4 +70,5 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
         audit=audit,
         org_context=org_context,
         memory=memory,
+        decisions=decisions,
     )

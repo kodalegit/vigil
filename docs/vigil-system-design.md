@@ -216,6 +216,8 @@ reports.generate_report
 audit.record_event
 ticketing.create_mock_ticket
 approval.record_decision
+decision_store.save_decision
+decision_store.get_decision
 ```
 
 Source monitoring subagent tools:
@@ -265,11 +267,21 @@ Minimum `slack.post_message` payload:
     "Approve & create ticket",
     "Ask follow-up",
     "Mark as false positive"
+  ],
+  "actions": [
+    {
+      "action_id": "approve_ticket",
+      "value": {
+        "analysis_id": "string",
+        "org_id": "string",
+        "idempotency_key": "string"
+      }
+    }
   ]
 }
 ```
 
-The Slack message should avoid leaking private document contents into unauthorized channels. The orchestrator should respect enterprise permissions and include links or short excerpts only when allowed.
+The Slack message should avoid leaking private document contents into unauthorized channels. The orchestrator should respect enterprise permissions and include links or short excerpts only when allowed. Approval buttons should carry a stable `analysis_id` and recover full decision state from the decision store before applying approval.
 
 ### 7.2 Audit Event Schema
 
@@ -302,7 +314,7 @@ Minimum `audit.record_event` schema:
 }
 ```
 
-This audit trail should make it possible to reconstruct what changed, why Vigil believed it mattered, which internal artifacts were implicated, who approved action, and what ticket was created.
+This audit trail should make it possible to reconstruct what changed, why Vigil believed it mattered, which internal artifacts were implicated, who approved action, and what ticket was created. Decision persistence should separately store the latest `ImpactDecision` by `analysis_id` so async approvals can update the correct decision without relying on Slack message state.
 
 The local implementation records audit events in memory and can append them to JSONL
 for repeatable demos. Production should replace this with durable audit storage.

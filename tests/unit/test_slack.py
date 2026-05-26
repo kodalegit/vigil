@@ -6,6 +6,8 @@ from urllib.parse import quote_plus
 from vigil.slack import (
     parse_slack_interaction_payload,
     slack_action_id,
+    slack_action_value,
+    slack_user_id,
     verify_slack_signature,
 )
 
@@ -58,6 +60,27 @@ def test_parse_slack_interaction_payload_and_action_id() -> None:
 
     assert parsed["type"] == "block_actions"
     assert slack_action_id(parsed) == "approve_ticket"
+
+
+def test_slack_action_value_and_user_id_parse_button_metadata() -> None:
+    payload = {
+        "user": {"id": "U123"},
+        "actions": [
+            {
+                "action_id": "approve_ticket",
+                "value": json.dumps(
+                    {
+                        "analysis_id": "analysis-123",
+                        "idempotency_key": "ticket:analysis-123",
+                    }
+                ),
+            }
+        ],
+    }
+
+    assert slack_action_value(payload)["analysis_id"] == "analysis-123"
+    assert slack_action_value(payload)["idempotency_key"] == "ticket:analysis-123"
+    assert slack_user_id(payload) == "U123"
 
 
 def _signature(secret: str, timestamp: str, body: bytes) -> str:

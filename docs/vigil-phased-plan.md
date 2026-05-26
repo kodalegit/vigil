@@ -265,6 +265,10 @@ Implemented:
 - Local audit backend with optional JSONL persistence.
 - Approval callback path that creates a mock ticket after human approval.
 - Idempotency keys for approval-driven mock ticket creation.
+- Local decision store for persisting impact decisions and approval updates.
+- Slack signed-request verification and verified interaction endpoint.
+- Slack approval callbacks can approve stored decisions when the button value includes `analysis_id`.
+- `SlackActionBackend` posts Block Kit alerts through Slack Web API when `VIGIL_ACTION_BACKEND=slack`.
 
 Still needed:
 
@@ -272,8 +276,9 @@ Still needed:
 - Persisted org context registry storage beyond local process memory.
 - Production audit storage backend beyond local JSONL.
 - Explicit audit event for false positive recorded.
-- Real Slack app integration.
-- Slack approval callback endpoint backed by a persisted decision store.
+- Production decision store backend beyond local JSONL.
+- Real Slack workspace smoke test with a configured app, bot token, and signing secret.
+- False-positive Slack callback handling.
 
 ### 3.7 Tests And Evals
 
@@ -300,7 +305,7 @@ agents-cli eval run --evalset tests/eval/evalsets/basic.evalset.json --config te
 agents-cli eval run --evalset tests/eval/evalsets/retrieval_quality.evalset.json --config tests/eval/retrieval_quality_config.json
 ```
 
-Latest known result: 45 unit/integration tests and lint pass on ADK 2.1.0. The basic and retrieval-quality ADK evals last passed before the freshness guardrail slice; the most recent rerun hung on the first Vertex model call and was interrupted before producing a result.
+Latest known result: 48 unit/integration tests and lint pass on ADK 2.1.0. The basic and retrieval-quality ADK evals last passed before the freshness guardrail slice; the most recent rerun hung on the first Vertex model call and was interrupted before producing a result.
 
 Known tooling note:
 
@@ -475,13 +480,13 @@ Turn impact analysis into an operational workflow.
 Tasks:
 
 - Add Slack app configuration docs.
-- Implement real Slack posting behind `ActionBackend`.
+- Implement real Slack posting behind `ActionBackend`. (Implemented behind `VIGIL_ACTION_BACKEND=slack`; needs workspace smoke test.)
 - Add Slack signing-secret verification. (Implemented for interactive callback requests.)
-- Add approval callback endpoint. (Initial verified callback acknowledgement implemented; approval wiring needs persisted decision lookup.)
-- Wire Slack approval callbacks into the idempotent approval path.
+- Add approval callback endpoint. (Implemented for approve-ticket callbacks backed by local decision store.)
+- Wire Slack approval callbacks into the idempotent approval path. (Implemented for approve-ticket callbacks.)
 - Add false-positive handling and audit event.
 - Ensure Slack payloads contain only safe snippets and permission-safe links.
-- Add tests for Slack callback approval wiring once decision lookup is available.
+- Add tests for Slack callback approval wiring once endpoint-level dependency injection is available.
 
 Exit criteria:
 

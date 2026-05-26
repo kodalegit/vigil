@@ -2,6 +2,7 @@ from vigil.agents.orchestrator import VigilOrchestrator
 from vigil.backends import BackendBundle
 from vigil.backends.actions import MockActionBackend
 from vigil.backends.audit import LocalAuditBackend
+from vigil.backends.decisions import LocalDecisionStore
 from vigil.backends.memory import LocalMemoryBackend
 from vigil.backends.org_context import LocalOrgContextRegistry, build_context_update_proposal
 from vigil.backends.retrieval import LocalRetrievalBackend
@@ -282,3 +283,28 @@ async def test_orchestrator_downgrades_duplicate_source_obligations_across_runs(
     assert any(event.event_type == "source_finding_recorded" for event in audit.events)
     assert any(event.event_type == "source_finding_duplicate" for event in audit.events)
     assert not any(result.action == "send_alert" for result in second.action_results)
+
+
+async def test_orchestrator_persists_decision_and_approval_updates() -> None:
+    decisions = LocalDecisionStore()
+    orchestrator = VigilOrchestrator(
+        backends=BackendBundle(
+            source=ObligationOnlySourceBackend(),
+            retrieval=LocalRetrievalBackend(top_k=3),
+            actions=MockActionBackend(),
+            audit=LocalAuditBackend(),
+            org_context=LocalOrgContextRegistry(),
+            memory=LocalMemoryBackend(),
+            decisions=decisions,
+        )
+    )
+
+    decision = await orchestrator.analyze(
+        MonitoringInstruction(query="EU AI Act deployer obligations")
+    )
+    approved = await orchestrator.record_approval(decision, approved_by="U123")
+    stored = await decisions.get(decision.analysis_id)
+
+    assert stored is not None
+    assert stored.approval_status == "approved"
+    assert stored.ticket_id == approved.ticket_id

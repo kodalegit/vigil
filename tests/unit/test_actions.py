@@ -1,5 +1,11 @@
-from vigil.backends.actions import build_slack_alert_payload
-from vigil.backends.actions import MockActionBackend
+from types import SimpleNamespace
+
+from vigil.backends.actions import (
+    MockActionBackend,
+    SlackActionBackend,
+    build_slack_alert_payload,
+    build_slack_blocks,
+)
 from vigil.schemas import (
     Citation,
     EnterpriseChunk,
@@ -67,8 +73,13 @@ def test_slack_payload_is_approval_oriented_and_snippet_limited() -> None:
     assert payload["approval_required"] is True
     assert payload["approval_status"] == "pending"
     assert "Approve & create ticket" in payload["buttons"]
+    assert payload["actions"][0]["action_id"] == "approve_ticket"
+    assert payload["actions"][0]["value"]["analysis_id"] == decision.analysis_id
     assert payload["affected_artifacts"][0]["owner"] == "Head of AI Governance"
     assert len(payload["affected_artifacts"][0]["snippet"]) <= 220
+    blocks = build_slack_blocks(payload)
+    assert blocks[-1]["type"] == "actions"
+    assert blocks[-1]["elements"][0]["action_id"] == "approve_ticket"
 
 
 async def test_mock_ticket_creation_is_approval_gated_and_idempotent() -> None:
@@ -100,3 +111,37 @@ async def test_mock_ticket_creation_is_approval_gated_and_idempotent() -> None:
     assert first.success is True
     assert first.external_id
     assert replay.external_id == first.external_id
+
+
+async def test_slack_action_backend_posts_alert_with_blocks() -> None:
+    class FakeSlackClient:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def chat_postMessage(self, **kwargs):
+            self.calls.append(kwargs)
+            return {"ok": True, "ts": "123.456"}
+
+    client = FakeSlackClient()
+    backend = SlackActionBackend(
+        settings=SimpleNamespace(slack_bot_token="xoxb-test-token"),
+        client=client,
+    )
+    decision = ImpactDecision(
+        analysis_id="analysis-slack",
+        is_actionable=True,
+        risk_level=RiskLevel.high,
+        classification="actionable",
+        summary="Actionable update.",
+        approval_required=True,
+        approval_status="pending",
+        ticket_status="blocked_pending_approval",
+        slack_channel="#legal-review",
+    )
+
+    result = await backend.send_alert(decision)
+
+    assert result.success is True
+    assert result.external_id == "123.456"
+    assert client.calls[0]["channel"] == "#legal-review"
+    assert client.calls[0]["blocks"][-1]["elements"][0]["action_id"] == "approve_ticket"

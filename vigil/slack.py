@@ -47,11 +47,42 @@ def parse_slack_interaction_payload(body: bytes) -> dict[str, Any]:
 
 
 def slack_action_id(payload: dict[str, Any]) -> str | None:
+    action = _first_action(payload)
+    if not action:
+        return None
+    action_id = action.get("action_id") or action.get("name")
+    return str(action_id) if action_id else None
+
+
+def slack_action_value(payload: dict[str, Any]) -> dict[str, Any]:
+    action = _first_action(payload)
+    if not action:
+        return {}
+    value = action.get("value")
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {"value": value}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def slack_user_id(payload: dict[str, Any]) -> str | None:
+    user = payload.get("user")
+    if not isinstance(user, dict):
+        return None
+    user_id = user.get("id") or user.get("username") or user.get("name")
+    return str(user_id) if user_id else None
+
+
+def _first_action(payload: dict[str, Any]) -> dict[str, Any] | None:
     actions = payload.get("actions")
     if not isinstance(actions, list) or not actions:
         return None
     action = actions[0]
     if not isinstance(action, dict):
         return None
-    action_id = action.get("action_id") or action.get("name")
-    return str(action_id) if action_id else None
+    return action

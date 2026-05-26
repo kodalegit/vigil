@@ -92,8 +92,15 @@ For production, implement operational Slack behind `ActionBackend` first. Treat 
 Slack request verification now follows Slack's signed-secret flow for interactive
 callbacks: raw body, `X-Slack-Request-Timestamp`, `X-Slack-Signature`, HMAC-SHA256,
 and a five-minute replay window. The current `/slack/interactions` endpoint verifies
-and acknowledges callbacks; wiring approval buttons into `record_approval` still needs
-a persisted decision lookup.
+callbacks and wires approve-ticket actions into `record_approval` through the local
+decision store. `SlackActionBackend` can post Block Kit alerts through Slack Web API
+when `VIGIL_ACTION_BACKEND=slack`; this still needs a real workspace smoke test.
+
+Vigil now has a local JSONL decision store for impact decisions and approval updates.
+For production onboarding and Slack operations, replace this with managed storage that
+supports point lookups by `analysis_id`, optimistic updates, retention policy, and
+tenant scoping. Good Google Cloud candidates are Firestore for simple document lookup
+or Cloud SQL if we need relational reporting and stricter transactional workflows.
 
 ### Security And Governance
 
@@ -108,6 +115,6 @@ a persisted decision lookup.
 
 1. Add Gemini web source robustness around duplicate findings across monitoring runs and mocked grounded-search/extraction failures.
 2. Add citation-quality ADK eval coverage that penalizes hallucinated owners or documents.
-3. Add real Slack mock-to-real boundary: posting, signing verification, and callback endpoint wired into the approval path.
+3. Add real Slack workspace smoke test, false-positive callback handling, and production decision-store backend.
 4. Add Agent Runtime scaffold and verify deploy in a dev project.
 5. Smoke test Agent Platform Sessions and Google Memory Bank once Agent Runtime identifiers and IAM are available.

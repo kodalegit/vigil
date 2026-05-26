@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     vigil_memory_bank_name: str | None = None
     vigil_agent_engine_id: str | None = None
     vigil_audit_log_path: str | None = ".vigil/audit.jsonl"
+    vigil_decision_store_path: str | None = ".vigil/decisions.jsonl"
     vigil_source_backend: Literal["mock", "gemini_web"] = "mock"
     vigil_action_backend: Literal["mock", "slack"] = "mock"
     vigil_retrieval_top_k: int = 6

@@ -22,10 +22,14 @@ from google.cloud import logging as google_cloud_logging
 
 from vigil.app_utils.telemetry import setup_telemetry
 from vigil.app_utils.typing import Feedback
+from vigil.agents import VigilOrchestrator
+from vigil.backends import create_backends
 from vigil.settings import get_settings
 from vigil.slack import (
     parse_slack_interaction_payload,
     slack_action_id,
+    slack_action_value,
+    slack_user_id,
     verify_slack_signature,
 )
 
@@ -94,6 +98,30 @@ async def handle_slack_interaction(request: Request) -> dict[str, str | None]:
         raise HTTPException(status_code=400, detail="Invalid Slack interaction payload.") from None
 
     action_id = slack_action_id(payload)
+    action_value = slack_action_value(payload)
+    approval_status: str | None = None
+    ticket_id: str | None = None
+    if action_id == "approve_ticket":
+        analysis_id = action_value.get("analysis_id")
+        if not isinstance(analysis_id, str) or not analysis_id:
+            raise HTTPException(status_code=400, detail="Slack action is missing analysis_id.")
+        backends = create_backends()
+        if backends.decisions is None:
+            raise HTTPException(status_code=503, detail="Decision store is not configured.")
+        decision = await backends.decisions.get(analysis_id)
+        if decision is None:
+            raise HTTPException(status_code=404, detail="Impact decision was not found.")
+        approved = await VigilOrchestrator(backends=backends).record_approval(
+            decision,
+            approved_by=slack_user_id(payload) or "slack-user",
+            approved=True,
+            idempotency_key=action_value.get("idempotency_key")
+            if isinstance(action_value.get("idempotency_key"), str)
+            else None,
+        )
+        approval_status = approved.approval_status
+        ticket_id = approved.ticket_id
+
     logger.log_struct(
         {
             "event": "slack_interaction_verified",
@@ -114,6 +142,8 @@ async def handle_slack_interaction(request: Request) -> dict[str, str | None]:
     return {
         "status": "acknowledged",
         "action_id": action_id,
+        "approval_status": approval_status,
+        "ticket_id": ticket_id,
     }
 
 

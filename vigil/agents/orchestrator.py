@@ -36,6 +36,7 @@ class VigilOrchestrator:
                 audit=self.backends.audit,
                 org_context=LocalOrgContextRegistry(),
                 memory=self.backends.memory,
+                decisions=self.backends.decisions,
             )
         if self.backends.memory is None:
             self.backends = BackendBundle(
@@ -45,6 +46,7 @@ class VigilOrchestrator:
                 audit=self.backends.audit,
                 org_context=self.backends.org_context,
                 memory=LocalMemoryBackend(),
+                decisions=self.backends.decisions,
             )
         self.source_agent = source_agent or SourceMonitoringAgent(self.backends.source)
         self.enterprise_agent = enterprise_agent or EnterpriseContextAgent(
@@ -195,6 +197,9 @@ class VigilOrchestrator:
         )
         decision.audit_events = audit_events
 
+        if self.backends.decisions is not None:
+            decision = await self.backends.decisions.save(decision)
+
         return decision
 
     async def record_approval(
@@ -216,7 +221,10 @@ class VigilOrchestrator:
                     "approved_by": approved_by,
                 },
             )
-            return decision.model_copy(update={"audit_events": audit_events})
+            updated = decision.model_copy(update={"audit_events": audit_events})
+            if self.backends.decisions is not None:
+                updated = await self.backends.decisions.save(updated)
+            return updated
         if not approved:
             await self._record_audit(
                 audit_events,
@@ -227,7 +235,7 @@ class VigilOrchestrator:
                     "approved_by": approved_by,
                 },
             )
-            return decision.model_copy(
+            updated = decision.model_copy(
                 update={
                     "approval_status": "rejected",
                     "ticket_status": "not_required",
@@ -236,6 +244,9 @@ class VigilOrchestrator:
                     "audit_events": audit_events,
                 }
             )
+            if self.backends.decisions is not None:
+                updated = await self.backends.decisions.save(updated)
+            return updated
         if decision.ticket_status == "created" and decision.ticket_id:
             await self._record_audit(
                 audit_events,
@@ -248,7 +259,7 @@ class VigilOrchestrator:
                     "idempotency_key": idempotency_key,
                 },
             )
-            return decision.model_copy(
+            updated = decision.model_copy(
                 update={
                     "approval_status": "approved",
                     "approved_by": decision.approved_by or approved_by,
@@ -256,6 +267,9 @@ class VigilOrchestrator:
                     "audit_events": audit_events,
                 }
             )
+            if self.backends.decisions is not None:
+                updated = await self.backends.decisions.save(updated)
+            return updated
 
         approved_decision = decision.model_copy(
             update={
@@ -294,7 +308,7 @@ class VigilOrchestrator:
                 "success": str(ticket_result.success),
             },
         )
-        return approved_decision.model_copy(
+        updated = approved_decision.model_copy(
             update={
                 "ticket_status": ticket_status,
                 "ticket_id": ticket_result.external_id,
@@ -302,6 +316,9 @@ class VigilOrchestrator:
             },
             deep=True,
         )
+        if self.backends.decisions is not None:
+            updated = await self.backends.decisions.save(updated)
+        return updated
 
     async def _record_audit(
         self,
