@@ -266,6 +266,8 @@ Implemented:
 - Approval callback path that creates a mock ticket after human approval.
 - Idempotency keys for approval-driven mock ticket creation.
 - Local decision store for persisting impact decisions and approval updates.
+- Firestore-backed decision store for production `analysis_id` lookups.
+- Firestore-backed org context registry for approved profiles, source allowlists, Slack preferences, monitoring profiles, and proposal records.
 - Slack signed-request verification and verified interaction endpoint.
 - Slack approval callbacks can approve stored decisions when the button value includes `analysis_id`.
 - `SlackActionBackend` posts Block Kit alerts through Slack Web API when `VIGIL_ACTION_BACKEND=slack`.
@@ -273,10 +275,9 @@ Implemented:
 Still needed:
 
 - Google Memory Bank deployment smoke test after Agent Runtime identifiers and IAM are available.
-- Persisted org context registry storage beyond local process memory.
+- Firestore live smoke test for org context registry and decision store.
 - Production audit storage backend beyond local JSONL.
 - Explicit audit event for false positive recorded.
-- Production decision store backend beyond local JSONL.
 - Real Slack workspace smoke test with a configured app, bot token, and signing secret.
 - False-positive Slack callback handling.
 
@@ -305,7 +306,7 @@ agents-cli eval run --evalset tests/eval/evalsets/basic.evalset.json --config te
 agents-cli eval run --evalset tests/eval/evalsets/retrieval_quality.evalset.json --config tests/eval/retrieval_quality_config.json
 ```
 
-Latest known result: 48 unit/integration tests and lint pass on ADK 2.1.0. The basic and retrieval-quality ADK evals last passed before the freshness guardrail slice; the most recent rerun hung on the first Vertex model call and was interrupted before producing a result.
+Latest known result: 54 unit/integration tests and lint pass on ADK 2.1.0. The basic and retrieval-quality ADK evals last passed before the freshness guardrail slice; the most recent rerun hung on the first Vertex model call and was interrupted before producing a result.
 
 Known tooling note:
 
@@ -597,3 +598,16 @@ To call Vigil “complete” for the current scope, close these gaps in order:
 3. Slack workflow: signing verification, callback endpoint, approval wiring, false-positive audit flow.
 4. Runtime readiness: agents-cli upgrade/scaffold review, Agent Runtime config, IAM/secrets checklist, Memory Bank smoke test.
 5. Demo package: README runbook, one-command demo, eval summary, architecture diagram, short demo script.
+
+## 16. External Resources Needed For Live Testing
+
+Before live Firestore, Slack, Memory Bank, or Agent Runtime testing, configure:
+
+- Google Cloud project with Firestore in Native mode enabled.
+- Service account or ADC identity with Firestore document read/write permissions.
+- `VIGIL_STORAGE_BACKEND=firestore`.
+- `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION`.
+- Optional `VIGIL_FIRESTORE_COLLECTION_PREFIX` for environment isolation, for example `vigil_dev`.
+- Slack app with bot token, signing secret, `chat:write` scope, and interactive callback URL `/slack/interactions`.
+- Secret Manager entries for Slack and Google credentials before deployment.
+- Agent Runtime identifiers and IAM for Memory Bank smoke testing.

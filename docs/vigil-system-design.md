@@ -314,7 +314,7 @@ Minimum `audit.record_event` schema:
 }
 ```
 
-This audit trail should make it possible to reconstruct what changed, why Vigil believed it mattered, which internal artifacts were implicated, who approved action, and what ticket was created. Decision persistence should separately store the latest `ImpactDecision` by `analysis_id` so async approvals can update the correct decision without relying on Slack message state.
+This audit trail should make it possible to reconstruct what changed, why Vigil believed it mattered, which internal artifacts were implicated, who approved action, and what ticket was created. Decision persistence should separately store the latest `ImpactDecision` by `analysis_id` so async approvals can update the correct decision without relying on Slack message state. Firestore can serve both decision persistence and the org context registry because both use tenant-scoped document records with direct key lookups; append-heavy audit analytics can move to a separate store later.
 
 The local implementation records audit events in memory and can append them to JSONL
 for repeatable demos. Production should replace this with durable audit storage.

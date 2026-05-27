@@ -11,11 +11,13 @@ class Settings(BaseSettings):
     vigil_model: str = "gemini-2.5-flash"
     vigil_reasoning_model: str = "gemini-2.5-pro"
     vigil_retrieval_backend: Literal["local", "rag_engine"] = "local"
+    vigil_storage_backend: Literal["local", "firestore"] = "local"
     vigil_memory_backend: Literal["local", "google"] = "local"
     vigil_memory_bank_name: str | None = None
     vigil_agent_engine_id: str | None = None
     vigil_audit_log_path: str | None = ".vigil/audit.jsonl"
     vigil_decision_store_path: str | None = ".vigil/decisions.jsonl"
+    vigil_firestore_collection_prefix: str = "vigil"
     vigil_source_backend: Literal["mock", "gemini_web"] = "mock"
     vigil_action_backend: Literal["mock", "slack"] = "mock"
     vigil_retrieval_top_k: int = 6

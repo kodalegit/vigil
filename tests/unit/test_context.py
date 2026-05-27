@@ -1,7 +1,14 @@
+from types import SimpleNamespace
+
 import pytest
 
+from tests.unit.firestore_fakes import FakeFirestoreClient
 from vigil.backends.memory import LocalMemoryBackend
-from vigil.backends.org_context import LocalOrgContextRegistry, build_context_update_proposal
+from vigil.backends.org_context import (
+    FirestoreOrgContextRegistry,
+    LocalOrgContextRegistry,
+    build_context_update_proposal,
+)
 from vigil.context import ContextCompiler
 from vigil.schemas import MemoryWriteProposal, MonitoringInstruction
 
@@ -97,6 +104,35 @@ async def test_context_update_proposal_validates_and_commits_approved_changes() 
     context = await registry.get_context("acme")
 
     assert errors == []
+    assert result.committed is True
+    assert context.profile.jurisdictions == ["European Union", "United States"]
+    assert context.slack_preferences.default_channel == "#legal-review"
+
+
+async def test_firestore_org_context_registry_persists_proposals_and_context() -> None:
+    registry = FirestoreOrgContextRegistry(
+        settings=SimpleNamespace(
+            google_cloud_project="test-project",
+            vigil_firestore_collection_prefix="test_vigil",
+        ),
+        client=FakeFirestoreClient(),
+    )
+    proposal = await build_context_update_proposal(
+        registry,
+        org_id="firestore-org",
+        summary="Persist legal review routing.",
+        updates={
+            "profile": {"jurisdictions": ["European Union", "United States"]},
+            "slack_preferences": {"default_channel": "#legal-review"},
+        },
+        approved=True,
+    )
+
+    saved_proposal = await registry.get_proposal(proposal.proposal_id)
+    result = await registry.commit_proposal(proposal.proposal_id, approved=True)
+    context = await registry.get_context("firestore-org")
+
+    assert saved_proposal is not None
     assert result.committed is True
     assert context.profile.jurisdictions == ["European Union", "United States"]
     assert context.slack_preferences.default_channel == "#legal-review"

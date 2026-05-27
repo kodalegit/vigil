@@ -96,11 +96,12 @@ callbacks and wires approve-ticket actions into `record_approval` through the lo
 decision store. `SlackActionBackend` can post Block Kit alerts through Slack Web API
 when `VIGIL_ACTION_BACKEND=slack`; this still needs a real workspace smoke test.
 
-Vigil now has a local JSONL decision store for impact decisions and approval updates.
-For production onboarding and Slack operations, replace this with managed storage that
-supports point lookups by `analysis_id`, optimistic updates, retention policy, and
-tenant scoping. Good Google Cloud candidates are Firestore for simple document lookup
-or Cloud SQL if we need relational reporting and stricter transactional workflows.
+Vigil now has local JSONL and Firestore storage implementations for impact decisions
+and approval updates. Firestore is also suitable for the typed org context registry
+because profiles, source policies, Slack preferences, monitoring profiles, proposals,
+and approved obligation inventory records are document-shaped, tenant-scoped, and
+mostly read by ID. Use `VIGIL_STORAGE_BACKEND=firestore` for live storage tests. Keep
+audit/event analytics separate if we later need append-heavy reporting in BigQuery.
 
 ### Security And Governance
 
@@ -115,6 +116,6 @@ or Cloud SQL if we need relational reporting and stricter transactional workflow
 
 1. Add Gemini web source robustness around duplicate findings across monitoring runs and mocked grounded-search/extraction failures.
 2. Add citation-quality ADK eval coverage that penalizes hallucinated owners or documents.
-3. Add real Slack workspace smoke test, false-positive callback handling, and production decision-store backend.
+3. Add Firestore live smoke test, real Slack workspace smoke test, and false-positive callback handling.
 4. Add Agent Runtime scaffold and verify deploy in a dev project.
 5. Smoke test Agent Platform Sessions and Google Memory Bank once Agent Runtime identifiers and IAM are available.

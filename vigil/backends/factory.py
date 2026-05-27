@@ -2,9 +2,13 @@ from dataclasses import dataclass
 
 from vigil.backends.actions import ActionBackend, MockActionBackend, SlackActionBackend
 from vigil.backends.audit import AuditBackend, LocalAuditBackend
-from vigil.backends.decisions import DecisionStore, LocalDecisionStore
+from vigil.backends.decisions import DecisionStore, FirestoreDecisionStore, LocalDecisionStore
 from vigil.backends.memory import GoogleMemoryBankBackend, LocalMemoryBackend, MemoryBackend
-from vigil.backends.org_context import LocalOrgContextRegistry, OrgContextRegistry
+from vigil.backends.org_context import (
+    FirestoreOrgContextRegistry,
+    LocalOrgContextRegistry,
+    OrgContextRegistry,
+)
 from vigil.backends.retrieval import LocalRetrievalBackend, RagEngineRetrievalBackend, RetrievalBackend
 from vigil.backends.source import GeminiWebSourceBackend, MockSourceBackend, SourceBackend
 from vigil.settings import Settings, get_settings
@@ -28,9 +32,18 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
     retrieval: RetrievalBackend
     actions: ActionBackend
     audit: AuditBackend = LocalAuditBackend(settings.vigil_audit_log_path)
-    decisions: DecisionStore = LocalDecisionStore(settings.vigil_decision_store_path)
-    org_context: OrgContextRegistry = LocalOrgContextRegistry()
+    decisions: DecisionStore
+    org_context: OrgContextRegistry
     memory: MemoryBackend
+
+    if settings.vigil_storage_backend == "local":
+        decisions = LocalDecisionStore(settings.vigil_decision_store_path)
+        org_context = LocalOrgContextRegistry()
+    elif settings.vigil_storage_backend == "firestore":
+        decisions = FirestoreDecisionStore(settings)
+        org_context = FirestoreOrgContextRegistry(settings)
+    else:
+        raise NotImplementedError(f"Unknown storage backend: {settings.vigil_storage_backend}")
 
     if settings.vigil_source_backend == "mock":
         source = MockSourceBackend()

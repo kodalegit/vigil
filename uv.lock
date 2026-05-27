@@ -1025,6 +1025,23 @@ wheels = [
 ]
 
 [[package]]
+name = "google-cloud-firestore"
+version = "2.27.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "google-cloud-core" },
+    { name = "grpcio" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4c/83/bdfd4387fadc5f44de1d0f97b456c648b6f87ec0b1818a9f7f477e6e6eab/google_cloud_firestore-2.27.0.tar.gz", hash = "sha256:5633cb164ef56ca6c73a807822191a56a98f6f10e76978c4f2eb197ae03383d2", size = 649244 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6d/db/fc72c4279887cc95011f16e70200d021030f0261e6391fa52e3adfaaea25/google_cloud_firestore-2.27.0-py3-none-any.whl", hash = "sha256:cc2ea78bc2d4dcc928016d56802deacfda3c9bbda0a7d691ee73b41a2f1a80d7", size = 429806 },
+]
+
+[[package]]
 name = "google-cloud-iam"
 version = "2.23.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3604,6 +3621,7 @@ dependencies = [
     { name = "google-auth" },
     { name = "google-auth-oauthlib" },
     { name = "google-cloud-aiplatform", extra = ["agent-engines"] },
+    { name = "google-cloud-firestore" },
     { name = "google-genai" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -3646,6 +3664,7 @@ requires-dist = [
     { name = "google-auth", specifier = ">=2.0.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.0.0" },
     { name = "google-cloud-aiplatform", extras = ["agent-engines"], specifier = ">=1.112.0" },
+    { name = "google-cloud-firestore", specifier = ">=2.0.0" },
     { name = "google-genai", specifier = ">=1.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
     { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.13.0" },

@@ -3,6 +3,8 @@ from hashlib import sha256
 from typing import Any, Protocol
 from uuid import uuid4
 
+from google.cloud import firestore
+
 from vigil.schemas import (
     ContextUpdateProposal,
     ContextUpdateResult,
@@ -12,6 +14,7 @@ from vigil.schemas import (
     OrgContext,
     TrustedSource,
 )
+from vigil.settings import Settings, get_settings
 
 
 class OrgContextRegistry(Protocol):
@@ -47,18 +50,7 @@ class LocalOrgContextRegistry:
         return proposal.model_copy(deep=True)
 
     async def validate_proposal(self, proposal: ContextUpdateProposal) -> list[str]:
-        errors: list[str] = []
-        context = proposal.proposed_context
-        if not context.profile.org_id:
-            errors.append("Org profile requires an org_id.")
-        if not context.profile.jurisdictions:
-            errors.append("Org profile requires at least one jurisdiction.")
-        if context.source_policy.require_allowlist and not context.source_policy.allowlisted_sources:
-            errors.append("Source policy requires at least one allowlisted source.")
-        for source in context.source_policy.allowlisted_sources:
-            if not source.url.startswith(("https://", "http://")):
-                errors.append(f"Allowlisted source {source.source_id} must use an HTTP URL.")
-        return errors
+        return _validate_context(proposal.proposed_context)
 
     async def get_proposal(self, proposal_id: str) -> ContextUpdateProposal | None:
         proposal = _LOCAL_PROPOSALS.get(proposal_id)
@@ -98,6 +90,86 @@ class LocalOrgContextRegistry:
         )
 
 
+class FirestoreOrgContextRegistry:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        client: firestore.Client | None = None,
+    ) -> None:
+        self.settings = settings or get_settings()
+        self.client = client or firestore.Client(project=self.settings.google_cloud_project)
+        prefix = self.settings.vigil_firestore_collection_prefix
+        self.context_collection = f"{prefix}_org_contexts"
+        self.proposal_collection = f"{prefix}_context_proposals"
+
+    async def get_context(self, org_id: str) -> OrgContext:
+        ref = self.client.collection(self.context_collection).document(org_id)
+        snapshot = ref.get()
+        if snapshot.exists:
+            return OrgContext.model_validate(snapshot.to_dict() or {})
+        context = _default_context(org_id)
+        ref.set(context.model_dump(mode="json"))
+        return context.model_copy(deep=True)
+
+    async def save_proposal(self, proposal: ContextUpdateProposal) -> ContextUpdateProposal:
+        errors = await self.validate_proposal(proposal)
+        if errors:
+            raise ValueError("; ".join(errors))
+        saved = proposal.model_copy(deep=True)
+        self.client.collection(self.proposal_collection).document(saved.proposal_id).set(
+            saved.model_dump(mode="json")
+        )
+        return saved
+
+    async def validate_proposal(self, proposal: ContextUpdateProposal) -> list[str]:
+        return _validate_context(proposal.proposed_context)
+
+    async def get_proposal(self, proposal_id: str) -> ContextUpdateProposal | None:
+        snapshot = self.client.collection(self.proposal_collection).document(proposal_id).get()
+        if not snapshot.exists:
+            return None
+        return ContextUpdateProposal.model_validate(snapshot.to_dict() or {})
+
+    async def commit_proposal(
+        self,
+        proposal_id: str,
+        approved: bool,
+    ) -> ContextUpdateResult:
+        proposal = await self.get_proposal(proposal_id)
+        if not proposal:
+            return ContextUpdateResult(
+                proposal_id=proposal_id,
+                committed=False,
+                message="Context update proposal was not found.",
+            )
+        if not approved or not proposal.approved:
+            return ContextUpdateResult(
+                proposal_id=proposal_id,
+                committed=False,
+                message="Context update was not committed because approval is required.",
+            )
+        errors = await self.validate_proposal(proposal)
+        if errors:
+            return ContextUpdateResult(
+                proposal_id=proposal_id,
+                committed=False,
+                message="Context update was not committed: " + "; ".join(errors),
+            )
+        context = proposal.proposed_context.model_copy(deep=True)
+        self.client.collection(self.context_collection).document(proposal.org_id).set(
+            context.model_dump(mode="json")
+        )
+        self.client.collection(self.proposal_collection).document(proposal_id).set(
+            proposal.model_dump(mode="json")
+        )
+        return ContextUpdateResult(
+            proposal_id=proposal_id,
+            committed=True,
+            message="Approved organization context update committed.",
+            context=context,
+        )
+
+
 async def build_context_update_proposal(
     registry: OrgContextRegistry,
     *,
@@ -121,6 +193,20 @@ async def build_context_update_proposal(
         approved=approved,
     )
     return await registry.save_proposal(proposal)
+
+
+def _validate_context(context: OrgContext) -> list[str]:
+    errors: list[str] = []
+    if not context.profile.org_id:
+        errors.append("Org profile requires an org_id.")
+    if not context.profile.jurisdictions:
+        errors.append("Org profile requires at least one jurisdiction.")
+    if context.source_policy.require_allowlist and not context.source_policy.allowlisted_sources:
+        errors.append("Source policy requires at least one allowlisted source.")
+    for source in context.source_policy.allowlisted_sources:
+        if not source.url.startswith(("https://", "http://")):
+            errors.append(f"Allowlisted source {source.source_id} must use an HTTP URL.")
+    return errors
 
 
 def _apply_updates(context: OrgContext, updates: dict[str, Any]) -> OrgContext:

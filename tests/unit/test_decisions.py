@@ -1,5 +1,8 @@
-from vigil.backends.decisions import LocalDecisionStore
+from types import SimpleNamespace
+
+from vigil.backends.decisions import FirestoreDecisionStore, LocalDecisionStore
 from vigil.schemas import ImpactDecision, RiskLevel
+from tests.unit.firestore_fakes import FakeFirestoreClient
 
 
 async def test_local_decision_store_saves_loads_and_updates_latest_decision(tmp_path) -> None:
@@ -22,3 +25,27 @@ async def test_local_decision_store_saves_loads_and_updates_latest_decision(tmp_
 
     assert loaded is not None
     assert loaded.approval_status == "approved"
+
+
+async def test_firestore_decision_store_saves_and_loads_by_analysis_id() -> None:
+    store = FirestoreDecisionStore(
+        settings=SimpleNamespace(
+            google_cloud_project="test-project",
+            vigil_firestore_collection_prefix="test_vigil",
+        ),
+        client=FakeFirestoreClient(),
+    )
+    decision = ImpactDecision(
+        analysis_id="analysis-firestore-test",
+        is_actionable=False,
+        risk_level=RiskLevel.medium,
+        classification="informational",
+        summary="Stored in Firestore.",
+    )
+
+    await store.save(decision)
+    loaded = await store.get("analysis-firestore-test")
+
+    assert loaded is not None
+    assert loaded.analysis_id == decision.analysis_id
+    assert loaded.summary == "Stored in Firestore."
