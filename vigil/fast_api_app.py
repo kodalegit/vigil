@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+import logging
 import os
 
 import google.auth
@@ -34,12 +35,16 @@ from vigil.slack import (
 )
 
 setup_telemetry()
-_, project_id = google.auth.default()
-logging_client = google_cloud_logging.Client()
-logger = logging_client.logger(__name__)
-allow_origins = (
-    os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
-)
+logger = logging.getLogger(__name__)
+try:
+    _, project_id = google.auth.default()
+    logging_client = google_cloud_logging.Client(project=project_id)
+    struct_logger = logging_client.logger(__name__)
+except Exception as error:
+    project_id = None
+    logger.warning("Cloud logging unavailable; using local structured logging: %s", error)
+    struct_logger = None
+allow_origins = os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_ORIGINS") else None
 
 # Artifact bucket for ADK (created by Terraform, passed via env var)
 logs_bucket_name = os.environ.get("LOGS_BUCKET_NAME")
@@ -72,7 +77,7 @@ def collect_feedback(feedback: Feedback) -> dict[str, str]:
     Returns:
         Success message
     """
-    logger.log_struct(feedback.model_dump(), severity="INFO")
+    _log_struct(feedback.model_dump(), severity="INFO")
     return {"status": "success"}
 
 
@@ -121,20 +126,32 @@ async def handle_slack_interaction(request: Request) -> dict[str, str | None]:
         )
         approval_status = approved.approval_status
         ticket_id = approved.ticket_id
+    elif action_id == "mark_false_positive":
+        analysis_id = action_value.get("analysis_id")
+        if not isinstance(analysis_id, str) or not analysis_id:
+            raise HTTPException(status_code=400, detail="Slack action is missing analysis_id.")
+        backends = create_backends()
+        if backends.decisions is None:
+            raise HTTPException(status_code=503, detail="Decision store is not configured.")
+        decision = await backends.decisions.get(analysis_id)
+        if decision is None:
+            raise HTTPException(status_code=404, detail="Impact decision was not found.")
+        updated = await VigilOrchestrator(backends=backends).record_false_positive(
+            decision,
+            marked_by=slack_user_id(payload) or "slack-user",
+        )
+        approval_status = updated.approval_status
+        ticket_id = updated.ticket_id
 
-    logger.log_struct(
+    _log_struct(
         {
             "event": "slack_interaction_verified",
             "action_id": action_id,
             "team_id": (
-                payload.get("team", {}).get("id")
-                if isinstance(payload.get("team"), dict)
-                else None
+                payload.get("team", {}).get("id") if isinstance(payload.get("team"), dict) else None
             ),
             "user_id": (
-                payload.get("user", {}).get("id")
-                if isinstance(payload.get("user"), dict)
-                else None
+                payload.get("user", {}).get("id") if isinstance(payload.get("user"), dict) else None
             ),
         },
         severity="INFO",
@@ -145,6 +162,14 @@ async def handle_slack_interaction(request: Request) -> dict[str, str | None]:
         "approval_status": approval_status,
         "ticket_id": ticket_id,
     }
+
+
+def _log_struct(payload: dict, severity: str = "INFO") -> None:
+    if struct_logger is not None:
+        struct_logger.log_struct(payload, severity=severity)
+        return
+    level = getattr(logging, severity.upper(), logging.INFO)
+    logger.log(level, json.dumps(payload, sort_keys=True, default=str))
 
 
 # Main execution

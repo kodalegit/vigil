@@ -30,7 +30,7 @@ An ADK 2 `Workflow` can be useful for scheduled monitoring runs later, especiall
 
 Keep the project compatible with `agents-cli` and ADK:
 
-- Preserve `[tool.agents-cli]` metadata in `pyproject.toml`.
+- Preserve `agents-cli-manifest.yaml` or equivalent `[tool.agents-cli]` project metadata.
 - Keep `vigil/agent.py` exporting `root_agent` and `app`.
 - Keep `vigil/fast_api_app.py` for local and containerized serving.
 - Add deployment with `agents-cli scaffold enhance . --deployment-target agent_runtime` when ready.
@@ -92,9 +92,11 @@ For production, implement operational Slack behind `ActionBackend` first. Treat 
 Slack request verification now follows Slack's signed-secret flow for interactive
 callbacks: raw body, `X-Slack-Request-Timestamp`, `X-Slack-Signature`, HMAC-SHA256,
 and a five-minute replay window. The current `/slack/interactions` endpoint verifies
-callbacks and wires approve-ticket actions into `record_approval` through the local
-decision store. `SlackActionBackend` can post Block Kit alerts through Slack Web API
-when `VIGIL_ACTION_BACKEND=slack`; this still needs a real workspace smoke test.
+callbacks and wires approve-ticket actions into `record_approval` through the decision
+store. False-positive callbacks record an approved false-positive obligation in the
+organization context registry so future runs can suppress the same obligation. `SlackActionBackend`
+can post Block Kit alerts through Slack Web API when `VIGIL_ACTION_BACKEND=slack`; this
+still needs a real workspace smoke test.
 
 Vigil now has local JSONL and Firestore storage implementations for impact decisions
 and approval updates. Firestore is also suitable for the typed org context registry
@@ -116,6 +118,157 @@ audit/event analytics separate if we later need append-heavy reporting in BigQue
 
 1. Add Gemini web source robustness around duplicate findings across monitoring runs and mocked grounded-search/extraction failures.
 2. Add citation-quality ADK eval coverage that penalizes hallucinated owners or documents.
-3. Add Firestore live smoke test, real Slack workspace smoke test, and false-positive callback handling.
+3. Add Firestore live smoke test and real Slack workspace smoke test.
 4. Add Agent Runtime scaffold and verify deploy in a dev project.
 5. Smoke test Agent Platform Sessions and Google Memory Bank once Agent Runtime identifiers and IAM are available.
+
+## Production Functionality Test Roadmap
+
+Connect production-like resources in this order, keeping each step reversible and small.
+Do not connect the next resource until the current one has a passing smoke test, a rollback
+path, and an audit/log signal.
+
+### 1. Google Cloud Project And Identity
+
+Set up a dedicated dev Google Cloud project before touching production data.
+
+Connect:
+
+- one dev project and billing account
+- Application Default Credentials for local smoke tests
+- a least-privilege service account for deployed Vigil
+- Secret Manager entries for Slack and future third-party credentials
+
+Verify:
+
+- `agents-cli info` shows the intended project, region, and deployment target once enhanced
+- local model auth works with `GOOGLE_GENAI_USE_VERTEXAI=true`
+- Cloud Logging receives structured app logs without prompt/response content by default
+
+Improve before deployment:
+
+- document IAM roles per backend
+- keep `GOOGLE_CLOUD_LOCATION` aligned with model availability
+- decide retention windows for audit, decision, and trace data
+
+### 2. Firestore Decision And Context Storage
+
+Firestore should be the first live backend because Slack callbacks depend on stable
+`analysis_id` lookups after the original request is gone.
+
+Connect:
+
+- Firestore Native mode in the dev project
+- `VIGIL_STORAGE_BACKEND=firestore`
+- a non-production collection prefix such as `vigil_dev`
+
+Verify:
+
+- analysis decisions persist and can be retrieved by `analysis_id`
+- approval callbacks update the same decision once
+- false-positive callbacks add approved obligation inventory records
+- tenant/org IDs cannot read or overwrite another org's records in application code
+
+Improve before deployment:
+
+- add a live Firestore smoke test gated by an environment flag
+- add optimistic update or transaction handling if concurrent callbacks become likely
+- define export/backup and retention policy
+
+### 3. Operational Slack App
+
+Test operational Slack before Slack federation. The alert workflow is the product surface;
+federated Slack search is only later enterprise context.
+
+Connect:
+
+- a dev Slack workspace
+- Slack bot token in Secret Manager or local env
+- Slack signing secret
+- public HTTPS callback endpoint for `/slack/interactions`
+
+Verify:
+
+- `VIGIL_ACTION_BACKEND=slack` posts a Block Kit alert to a private test channel
+- approve button creates exactly one ticket result when clicked repeatedly
+- false-positive button records inventory and suppresses the same obligation in a later run
+- Slack messages include only permission-safe snippets and stable IDs, not full documents
+
+Improve before deployment:
+
+- implement the real ticketing backend behind `ActionBackend.create_ticket`
+- add explicit handling for "Ask follow-up"
+- add channel allowlists and reviewer authorization checks
+
+### 4. Managed Retrieval Over Drive Or Cloud Storage
+
+Only connect real internal documents after Slack and storage are safe, because retrieval
+quality determines whether alerts are useful or noisy.
+
+Connect:
+
+- a small curated Drive folder or GCS bucket with non-sensitive pilot docs
+- Vertex AI RAG Engine corpus
+- `VIGIL_RETRIEVAL_BACKEND=rag_engine`
+- `VIGIL_RAG_CORPUS=<corpus resource name>`
+
+Verify:
+
+- RAG results preserve titles, snippets, citations, and source URIs
+- obligation-to-document mappings match the local corpus baseline
+- unrelated obligations produce no affected artifacts
+- reviewers can inspect cited source documents through the expected permission path
+
+Improve before deployment:
+
+- add RAG response normalization tests with recorded fake responses
+- add citation-quality evals that penalize hallucinated owners, documents, and sections
+- document Drive sharing requirements for the Vertex RAG Data Service Agent
+
+### 5. Live Source Monitoring
+
+Use live web/source monitoring only after enterprise retrieval has a conservative no-match
+behavior. Live source noise is otherwise hard to distinguish from retrieval noise.
+
+Connect:
+
+- allowlisted official regulatory sources
+- `VIGIL_SOURCE_BACKEND=gemini_web`
+- source freshness windows per trusted source
+
+Verify:
+
+- obligations are returned only when backed by citations
+- stale or duplicate findings are downgraded
+- ambiguous consultations ask for clarification instead of alerting broadly
+
+Improve before deployment:
+
+- add monitored source-set configuration
+- add evals for stale, duplicate, and no-obligation live-source scenarios
+- consider a deterministic scheduled workflow for batch monitoring
+
+### 6. Agent Runtime, Sessions, Memory, And Observability
+
+Deploy only after the local loop, Firestore, Slack, RAG, and source monitoring pass dev
+smoke tests.
+
+Connect:
+
+- `agents-cli scaffold enhance . --deployment-target agent_runtime`
+- Agent Platform Sessions
+- Memory Bank for approved durable preferences
+- Cloud Trace and Monitoring dashboards
+
+Verify:
+
+- deployed revisions can run the same analysis loop as local
+- sessions hold temporary investigation state only
+- Memory Bank writes require approval and mirror registry facts/preferences
+- traces identify source, retrieval, Slack, ticketing, and audit latency
+
+Improve before deployment:
+
+- add Model Armor or policy checks before externally visible messages
+- define SLOs for monitoring runs and Slack callback latency
+- run ADK evals as a required pre-deploy gate

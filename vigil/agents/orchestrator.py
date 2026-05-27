@@ -5,7 +5,7 @@ from vigil.agents.enterprise_context import EnterpriseContextAgent
 from vigil.agents.source_monitoring import SourceMonitoringAgent
 from vigil.backends import BackendBundle, create_backends
 from vigil.backends.memory import LocalMemoryBackend
-from vigil.backends.org_context import LocalOrgContextRegistry
+from vigil.backends.org_context import LocalOrgContextRegistry, build_context_update_proposal
 from vigil.context import ContextCompiler
 from vigil.schemas import (
     AuditEvent,
@@ -13,6 +13,7 @@ from vigil.schemas import (
     EnterpriseFinding,
     ImpactDecision,
     MonitoringInstruction,
+    ObligationRegistryEntry,
     OrgContext,
     RegulatoryObligation,
     RiskLevel,
@@ -49,9 +50,7 @@ class VigilOrchestrator:
                 decisions=self.backends.decisions,
             )
         self.source_agent = source_agent or SourceMonitoringAgent(self.backends.source)
-        self.enterprise_agent = enterprise_agent or EnterpriseContextAgent(
-            self.backends.retrieval
-        )
+        self.enterprise_agent = enterprise_agent or EnterpriseContextAgent(self.backends.retrieval)
         self.context_compiler = ContextCompiler(
             registry=self.backends.org_context,
             memory=self.backends.memory,
@@ -94,9 +93,7 @@ class VigilOrchestrator:
                 "obligations": str(_count_obligations(source_findings)),
             },
         )
-        enterprise_findings = await self.enterprise_agent.search(
-            instruction, source_findings
-        )
+        enterprise_findings = await self.enterprise_agent.search(instruction, source_findings)
         await self._record_audit(
             audit_events,
             event_type="enterprise_context_retrieved",
@@ -155,18 +152,14 @@ class VigilOrchestrator:
                     "risk_level": decision.risk_level.value,
                 },
             )
-            decision.action_results.append(
-                await self.backends.actions.send_alert(decision)
-            )
+            decision.action_results.append(await self.backends.actions.send_alert(decision))
             await self._record_audit(
                 audit_events,
                 event_type="approval_requested",
                 message="Human approval required before remediation ticket creation.",
                 metadata={"approval_status": decision.approval_status},
             )
-            decision.action_results.append(
-                await self.backends.actions.generate_report(decision)
-            )
+            decision.action_results.append(await self.backends.actions.generate_report(decision))
             ticket_result = await self.backends.actions.create_ticket(
                 decision,
                 approved=False,
@@ -320,6 +313,78 @@ class VigilOrchestrator:
             updated = await self.backends.decisions.save(updated)
         return updated
 
+    async def record_false_positive(
+        self,
+        decision: ImpactDecision,
+        marked_by: str,
+    ) -> ImpactDecision:
+        audit_events = list(decision.audit_events)
+        entries = _false_positive_inventory_entries(decision, marked_by)
+        await self._record_audit(
+            audit_events,
+            event_type="false_positive_recorded",
+            message="Human reviewer marked regulatory impact decision as a false positive.",
+            metadata={
+                "analysis_id": decision.analysis_id,
+                "marked_by": marked_by,
+                "obligations": str(len(entries)),
+            },
+        )
+        if entries and self.backends.org_context is not None:
+            context = await self.backends.org_context.get_context(decision.org_id)
+            existing_keys = {
+                (entry.obligation_id, entry.canonical_text.lower())
+                for entry in context.obligation_inventory
+            }
+            obligation_inventory = list(context.obligation_inventory)
+            obligation_inventory.extend(
+                entry
+                for entry in entries
+                if (entry.obligation_id, entry.canonical_text.lower()) not in existing_keys
+            )
+            proposal = await build_context_update_proposal(
+                self.backends.org_context,
+                org_id=decision.org_id,
+                summary=("Record approved false-positive obligations from Slack reviewer action."),
+                updates={
+                    "obligation_inventory": [
+                        entry.model_dump(mode="python") for entry in obligation_inventory
+                    ]
+                },
+                requested_by=marked_by,
+                approved=True,
+            )
+            result = await self.backends.org_context.commit_proposal(
+                proposal.proposal_id,
+                approved=True,
+            )
+            await self._record_audit(
+                audit_events,
+                event_type="false_positive_inventory_updated",
+                message=result.message,
+                metadata={
+                    "analysis_id": decision.analysis_id,
+                    "proposal_id": proposal.proposal_id,
+                    "committed": str(result.committed),
+                },
+            )
+
+        updated = decision.model_copy(
+            update={
+                "approval_status": "rejected"
+                if decision.approval_required
+                else decision.approval_status,
+                "ticket_status": "not_required",
+                "approved_by": marked_by,
+                "approved_at": datetime.now(UTC),
+                "audit_events": audit_events,
+            },
+            deep=True,
+        )
+        if self.backends.decisions is not None:
+            updated = await self.backends.decisions.save(updated)
+        return updated
+
     async def _record_audit(
         self,
         audit_events: list[AuditEvent],
@@ -460,13 +525,16 @@ def _risk_level(
             for finding in source_findings
             for obligation in finding.obligations
         )
-        multi_artifact = len(
-            {
-                chunk.document.doc_id
-                for finding in enterprise_findings
-                for chunk in finding.chunks
-            }
-        ) > 1
+        multi_artifact = (
+            len(
+                {
+                    chunk.document.doc_id
+                    for finding in enterprise_findings
+                    for chunk in finding.chunks
+                }
+            )
+            > 1
+        )
         if high_obligation or multi_artifact or org_context.profile.risk_tolerance == RiskLevel.low:
             return RiskLevel.high
         return RiskLevel.medium
@@ -504,11 +572,7 @@ def _summary(
     enterprise_findings: list[EnterpriseFinding],
 ) -> str:
     artifact_count = len(
-        {
-            chunk.document.doc_id
-            for finding in enterprise_findings
-            for chunk in finding.chunks
-        }
+        {chunk.document.doc_id for finding in enterprise_findings for chunk in finding.chunks}
     )
     obligation_count = _count_obligations(source_findings)
     if classification == "actionable":
@@ -584,11 +648,7 @@ def _all_obligations_are_approved_false_positives(
     source_findings: list[SourceFinding],
     org_context: OrgContext,
 ) -> bool:
-    obligations = [
-        obligation
-        for finding in source_findings
-        for obligation in finding.obligations
-    ]
+    obligations = [obligation for finding in source_findings for obligation in finding.obligations]
     if not obligations:
         return False
     false_positive_keys = {
@@ -603,3 +663,41 @@ def _all_obligations_are_approved_false_positives(
         if not (key in false_positive_keys or id_match or text_match):
             return False
     return True
+
+
+def _false_positive_inventory_entries(
+    decision: ImpactDecision,
+    marked_by: str,
+) -> list[ObligationRegistryEntry]:
+    entries: list[ObligationRegistryEntry] = []
+    for finding in decision.source_findings:
+        for obligation in finding.obligations:
+            content_hash = sha256(obligation.text.lower().encode("utf-8")).hexdigest()
+            entries.append(
+                ObligationRegistryEntry(
+                    obligation_id=obligation.id,
+                    jurisdiction=obligation.jurisdiction,
+                    source_url=obligation.source_url,
+                    section_ref=obligation.section_id,
+                    canonical_text=obligation.text,
+                    topics=obligation.topics,
+                    effective_date=obligation.effective_date,
+                    status="false_positive",
+                    confidence=obligation.confidence,
+                    approval_status="approved",
+                    evidence_snippets=[obligation.source_quote],
+                    owners=[marked_by],
+                    versions=[
+                        {
+                            "version": 1,
+                            "canonical_text": obligation.text,
+                            "source_quote": obligation.source_quote,
+                            "source_url": obligation.source_url,
+                            "section_ref": obligation.section_id,
+                            "effective_date": obligation.effective_date,
+                            "content_hash": content_hash,
+                        }
+                    ],
+                )
+            )
+    return entries

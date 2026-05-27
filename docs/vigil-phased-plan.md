@@ -270,6 +270,7 @@ Implemented:
 - Firestore-backed org context registry for approved profiles, source allowlists, Slack preferences, monitoring profiles, and proposal records.
 - Slack signed-request verification and verified interaction endpoint.
 - Slack approval callbacks can approve stored decisions when the button value includes `analysis_id`.
+- Slack false-positive callbacks record approved false-positive obligations in the org context registry for future suppression.
 - `SlackActionBackend` posts Block Kit alerts through Slack Web API when `VIGIL_ACTION_BACKEND=slack`.
 
 Still needed:
@@ -277,9 +278,8 @@ Still needed:
 - Google Memory Bank deployment smoke test after Agent Runtime identifiers and IAM are available.
 - Firestore live smoke test for org context registry and decision store.
 - Production audit storage backend beyond local JSONL.
-- Explicit audit event for false positive recorded.
 - Real Slack workspace smoke test with a configured app, bot token, and signing secret.
-- False-positive Slack callback handling.
+- Reviewer authorization checks for Slack callback actions.
 
 ### 3.7 Tests And Evals
 

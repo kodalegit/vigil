@@ -138,7 +138,9 @@ async def test_orchestrator_marks_uncertain_source_without_obligations_ambiguous
     assert "Ask for clarification" in decision.recommended_actions[0]
 
 
-async def test_orchestrator_does_not_create_false_positive_artifacts_for_unrelated_obligation() -> None:
+async def test_orchestrator_does_not_create_false_positive_artifacts_for_unrelated_obligation() -> (
+    None
+):
     audit = LocalAuditBackend()
     orchestrator = VigilOrchestrator(
         backends=BackendBundle(
@@ -243,15 +245,49 @@ async def test_orchestrator_records_approval_and_creates_ticket_once() -> None:
     assert approved.ticket_status == "created"
     assert approved.ticket_id
     assert replay.ticket_id == approved.ticket_id
-    assert len(
-        [
-            result
-            for result in approved.action_results
-            if result.action == "create_ticket" and result.success
-        ]
-    ) == 1
+    assert (
+        len(
+            [
+                result
+                for result in approved.action_results
+                if result.action == "create_ticket" and result.success
+            ]
+        )
+        == 1
+    )
     assert any(event.event_type == "ticket_created" for event in audit.events)
     assert any(event.event_type == "approval_idempotent_replay" for event in audit.events)
+
+
+async def test_orchestrator_records_false_positive_for_future_suppression() -> None:
+    registry = LocalOrgContextRegistry()
+    audit = LocalAuditBackend()
+    orchestrator = VigilOrchestrator(
+        backends=BackendBundle(
+            source=ObligationOnlySourceBackend(),
+            retrieval=LocalRetrievalBackend(top_k=3),
+            actions=MockActionBackend(),
+            audit=audit,
+            org_context=registry,
+            memory=LocalMemoryBackend(),
+        )
+    )
+    decision = await orchestrator.analyze(
+        MonitoringInstruction(
+            query="EU AI Act deployer obligations",
+            org_id="slack-false-positive-org",
+        )
+    )
+
+    updated = await orchestrator.record_false_positive(decision, marked_by="U123")
+    context = await registry.get_context("slack-false-positive-org")
+
+    assert updated.approval_status == "rejected"
+    assert updated.ticket_status == "not_required"
+    assert context.obligation_inventory[0].status == "false_positive"
+    assert context.obligation_inventory[0].approval_status == "approved"
+    assert context.obligation_inventory[0].obligation_id == "obl-test"
+    assert any(event.event_type == "false_positive_recorded" for event in audit.events)
 
 
 async def test_orchestrator_downgrades_duplicate_source_obligations_across_runs() -> None:
