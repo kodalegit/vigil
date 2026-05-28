@@ -37,7 +37,9 @@ async def test_mock_source_backend_returns_structured_obligations_and_evidence()
     assert all(obligation.jurisdiction == "European Union" for obligation in finding.obligations)
 
 
-async def test_mock_source_backend_returns_unrelated_shipping_obligation_for_shipping_query() -> None:
+async def test_mock_source_backend_returns_unrelated_shipping_obligation_for_shipping_query() -> (
+    None
+):
     findings = await MockSourceBackend().search(
         MonitoringInstruction(
             query="maritime ballast water discharge reporting",

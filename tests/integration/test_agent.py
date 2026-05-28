@@ -30,7 +30,7 @@ def test_adk_2_runtime_is_available() -> None:
 
 
 def test_orchestrator_uses_agent_tool_specialists() -> None:
-    tool_names = {tool.name for tool in root_agent.tools}
+    tool_names = {getattr(tool, "name", "") for tool in root_agent.tools}
 
     assert "source_monitoring_agent" in tool_names
     assert "enterprise_context_agent" in tool_names
@@ -38,7 +38,7 @@ def test_orchestrator_uses_agent_tool_specialists() -> None:
 
 
 def test_context_and_memory_tools_are_exposed_on_root_agent() -> None:
-    tool_names = {tool.name for tool in root_agent.tools}
+    tool_names = {getattr(tool, "name", "") for tool in root_agent.tools}
 
     assert {
         "get_current_profile",

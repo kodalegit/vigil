@@ -1,5 +1,5 @@
 from vigil.backends.retrieval import LocalRetrievalBackend
-from vigil.schemas import MonitoringInstruction, SourceFinding
+from vigil.schemas import MonitoringInstruction, RegulatoryObligation, RiskLevel, SourceFinding
 
 
 async def test_local_retrieval_returns_relevant_chunks_for_eu_ai_act_obligations() -> None:
@@ -7,24 +7,24 @@ async def test_local_retrieval_returns_relevant_chunks_for_eu_ai_act_obligations
         SourceFinding(
             summary="EU AI Act obligations",
             obligations=[
-                {
-                    "id": "obl-human-oversight",
-                    "text": "Maintain documented human oversight procedures for high-risk AI workflows.",
-                    "jurisdiction": "European Union",
-                    "topics": ["human oversight", "AI governance"],
-                    "risk_level": "high",
-                    "source_quote": "Human oversight is required.",
-                    "confidence": "high",
-                },
-                {
-                    "id": "obl-evidence-retention",
-                    "text": "Keep technical and compliance evidence available for auditor review.",
-                    "jurisdiction": "European Union",
-                    "topics": ["evidence retention", "audit"],
-                    "risk_level": "high",
-                    "source_quote": "Evidence must be retained.",
-                    "confidence": "medium",
-                },
+                RegulatoryObligation(
+                    id="obl-human-oversight",
+                    text="Maintain documented human oversight procedures for high-risk AI workflows.",
+                    jurisdiction="European Union",
+                    topics=["human oversight", "AI governance"],
+                    risk_level=RiskLevel.high,
+                    source_quote="Human oversight is required.",
+                    confidence="high",
+                ),
+                RegulatoryObligation(
+                    id="obl-evidence-retention",
+                    text="Keep technical and compliance evidence available for auditor review.",
+                    jurisdiction="European Union",
+                    topics=["evidence retention", "audit"],
+                    risk_level=RiskLevel.high,
+                    source_quote="Evidence must be retained.",
+                    confidence="medium",
+                ),
             ],
         )
     ]
@@ -74,14 +74,8 @@ async def test_local_retrieval_applies_metadata_filters() -> None:
 
     assert findings
     assert findings[0].chunks
-    assert {
-        chunk.document.artifact_type
-        for chunk in findings[0].chunks
-    } == {"sop"}
-    assert {
-        chunk.document.business_unit
-        for chunk in findings[0].chunks
-    } == {"Security"}
+    assert {chunk.document.artifact_type for chunk in findings[0].chunks} == {"sop"}
+    assert {chunk.document.business_unit for chunk in findings[0].chunks} == {"Security"}
 
 
 async def test_local_retrieval_drops_weak_unrelated_matches() -> None:
@@ -102,15 +96,15 @@ async def test_local_retrieval_mapping_rationale_names_matched_terms() -> None:
         SourceFinding(
             summary="AI incident obligations",
             obligations=[
-                {
-                    "id": "obl-incident-logs",
-                    "text": "Escalate material AI incidents and preserve supporting logs.",
-                    "jurisdiction": "European Union",
-                    "topics": ["incident response", "logs"],
-                    "risk_level": "high",
-                    "source_quote": "Material incidents require supporting logs.",
-                    "confidence": "high",
-                }
+                RegulatoryObligation(
+                    id="obl-incident-logs",
+                    text="Escalate material AI incidents and preserve supporting logs.",
+                    jurisdiction="European Union",
+                    topics=["incident response", "logs"],
+                    risk_level=RiskLevel.high,
+                    source_quote="Material incidents require supporting logs.",
+                    confidence="high",
+                )
             ],
         )
     ]

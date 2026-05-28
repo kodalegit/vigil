@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from google.cloud import firestore
 
@@ -51,11 +51,11 @@ def _load_decisions(path: Path) -> dict[str, ImpactDecision]:
 class FirestoreDecisionStore:
     def __init__(
         self,
-        settings: Settings | None = None,
-        client: firestore.Client | None = None,
+        settings: Settings | Any | None = None,
+        client: Any = None,
     ) -> None:
         self.settings = settings or get_settings()
-        self.client = client or firestore.Client(project=self.settings.google_cloud_project)
+        self.client: Any = client or firestore.Client(project=self.settings.google_cloud_project)
         self.collection_name = f"{self.settings.vigil_firestore_collection_prefix}_decisions"
 
     async def save(self, decision: ImpactDecision) -> ImpactDecision:

@@ -67,12 +67,10 @@ def _apply_registry_defaults(
         )
 
     if not domain:
-        enabled_profiles = [profile for profile in org_context.monitoring_profiles if profile.enabled]
-        profile_domains = [
-            profile.domains[0]
-            for profile in enabled_profiles
-            if profile.domains
+        enabled_profiles = [
+            profile for profile in org_context.monitoring_profiles if profile.enabled
         ]
+        profile_domains = [profile.domains[0] for profile in enabled_profiles if profile.domains]
         if profile_domains:
             domain = profile_domains[0]
             provenance.append(
@@ -162,7 +160,10 @@ def _effective_source_freshness_days(
         return None
     matched_days: list[int] = []
     for source in org_context.source_policy.allowlisted_sources:
-        if source.trust_level == "blocked" or source.url in org_context.source_policy.blocked_sources:
+        if (
+            source.trust_level == "blocked"
+            or source.url in org_context.source_policy.blocked_sources
+        ):
             continue
         if sources and source.url not in sources:
             continue

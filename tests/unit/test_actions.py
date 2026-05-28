@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any
 
 from vigil.backends.actions import (
     MockActionBackend,
@@ -12,6 +13,7 @@ from vigil.schemas import (
     EnterpriseDocument,
     EnterpriseFinding,
     ImpactDecision,
+    RegulatoryObligation,
     RiskLevel,
     SourceFinding,
 )
@@ -38,12 +40,12 @@ def test_slack_payload_is_approval_oriented_and_snippet_limited() -> None:
             SourceFinding(
                 summary="EU AI Act",
                 obligations=[
-                    {
-                        "id": "obl-human-oversight",
-                        "text": "Maintain documented human oversight.",
-                        "jurisdiction": "European Union",
-                        "source_quote": "Oversight required.",
-                    }
+                    RegulatoryObligation(
+                        id="obl-human-oversight",
+                        text="Maintain documented human oversight.",
+                        jurisdiction="European Union",
+                        source_quote="Oversight required.",
+                    )
                 ],
             )
         ],
@@ -116,9 +118,9 @@ async def test_mock_ticket_creation_is_approval_gated_and_idempotent() -> None:
 async def test_slack_action_backend_posts_alert_with_blocks() -> None:
     class FakeSlackClient:
         def __init__(self) -> None:
-            self.calls = []
+            self.calls: list[dict[str, Any]] = []
 
-        def chat_postMessage(self, **kwargs):
+        def chat_postMessage(self, **kwargs: Any) -> dict[str, object]:
             self.calls.append(kwargs)
             return {"ok": True, "ts": "123.456"}
 

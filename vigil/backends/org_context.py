@@ -93,11 +93,11 @@ class LocalOrgContextRegistry:
 class FirestoreOrgContextRegistry:
     def __init__(
         self,
-        settings: Settings | None = None,
-        client: firestore.Client | None = None,
+        settings: Settings | Any | None = None,
+        client: Any = None,
     ) -> None:
         self.settings = settings or get_settings()
-        self.client = client or firestore.Client(project=self.settings.google_cloud_project)
+        self.client: Any = client or firestore.Client(project=self.settings.google_cloud_project)
         prefix = self.settings.vigil_firestore_collection_prefix
         self.context_collection = f"{prefix}_org_contexts"
         self.proposal_collection = f"{prefix}_context_proposals"
@@ -213,7 +213,9 @@ def _apply_updates(context: OrgContext, updates: dict[str, Any]) -> OrgContext:
     data = context.model_dump(mode="python")
     for section, value in updates.items():
         if section == "obligation_inventory":
-            data[section] = [_normalize_obligation(item).model_dump(mode="python") for item in value]
+            data[section] = [
+                _normalize_obligation(item).model_dump(mode="python") for item in value
+            ]
             continue
         if isinstance(value, dict) and isinstance(data.get(section), dict):
             data[section] = {**data[section], **value}
@@ -222,7 +224,9 @@ def _apply_updates(context: OrgContext, updates: dict[str, Any]) -> OrgContext:
     return OrgContext.model_validate(data)
 
 
-def _normalize_obligation(item: dict[str, Any] | ObligationRegistryEntry) -> ObligationRegistryEntry:
+def _normalize_obligation(
+    item: dict[str, Any] | ObligationRegistryEntry,
+) -> ObligationRegistryEntry:
     if isinstance(item, ObligationRegistryEntry):
         obligation = item
     else:
@@ -265,48 +269,50 @@ def _diff_context(current: OrgContext, proposed: OrgContext) -> list[str]:
 
 
 def _default_context(org_id: str) -> OrgContext:
-    return OrgContext(
-        profile={
-            "org_id": org_id,
-            "display_name": "Default Organization",
-            "sectors": ["SaaS"],
-            "products": ["AI governance workflows"],
-            "business_model": "Mid-size SaaS company handling regulated data.",
-            "jurisdictions": ["European Union"],
-            "risk_tolerance": "medium",
-        },
-        source_policy={
-            "allowlisted_sources": [
-                TrustedSource(
-                    source_id="eu-ai-act-briefing",
-                    name="EU AI Act briefing",
-                    url="https://artificialintelligenceact.eu/",
-                    jurisdictions=["European Union"],
-                    domains=["AI governance"],
-                    regulators=["European Union"],
-                    trust_level="trusted",
-                    freshness_days=30,
-                )
-            ],
-            "require_allowlist": True,
-        },
-        slack_preferences={
-            "default_channel": "#ai-governance-review",
-            "reviewer_user_ids": [],
-            "notification_windows": [],
-            "escalation_rules": [],
-        },
-        monitoring_profiles=[
-            {
-                "profile_id": "eu-ai-act",
-                "name": "EU AI Act high-risk AI monitoring",
-                "query": "EU AI Act high-risk AI deployer obligations",
+    return OrgContext.model_validate(
+        {
+            "profile": {
+                "org_id": org_id,
+                "display_name": "Default Organization",
+                "sectors": ["SaaS"],
+                "products": ["AI governance workflows"],
+                "business_model": "Mid-size SaaS company handling regulated data.",
                 "jurisdictions": ["European Union"],
-                "domains": ["AI governance"],
-                "cadence": "weekly",
-                "threshold": "medium",
-                "source_ids": ["eu-ai-act-briefing"],
-                "enabled": True,
-            }
-        ],
+                "risk_tolerance": "medium",
+            },
+            "source_policy": {
+                "allowlisted_sources": [
+                    TrustedSource(
+                        source_id="eu-ai-act-briefing",
+                        name="EU AI Act briefing",
+                        url="https://artificialintelligenceact.eu/",
+                        jurisdictions=["European Union"],
+                        domains=["AI governance"],
+                        regulators=["European Union"],
+                        trust_level="trusted",
+                        freshness_days=30,
+                    )
+                ],
+                "require_allowlist": True,
+            },
+            "slack_preferences": {
+                "default_channel": "#ai-governance-review",
+                "reviewer_user_ids": [],
+                "notification_windows": [],
+                "escalation_rules": [],
+            },
+            "monitoring_profiles": [
+                {
+                    "profile_id": "eu-ai-act",
+                    "name": "EU AI Act high-risk AI monitoring",
+                    "query": "EU AI Act high-risk AI deployer obligations",
+                    "jurisdictions": ["European Union"],
+                    "domains": ["AI governance"],
+                    "cadence": "weekly",
+                    "threshold": "medium",
+                    "source_ids": ["eu-ai-act-briefing"],
+                    "enabled": True,
+                }
+            ],
+        }
     )

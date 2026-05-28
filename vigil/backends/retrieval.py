@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from vigil.schemas import (
     Citation,
@@ -49,9 +49,7 @@ class LocalRetrievalBackend:
             return []
 
         obligations = [
-            obligation
-            for finding in source_findings
-            for obligation in finding.obligations
+            obligation for finding in source_findings for obligation in finding.obligations
         ]
         mappings = _build_mappings(ranked_chunks, obligations)
         if obligations and not mappings:
@@ -85,7 +83,7 @@ class LocalRetrievalBackend:
                 title=metadata.get("title", path.stem.replace("-", " ").title()),
                 owner=metadata.get("owner"),
                 business_unit=metadata.get("business_unit"),
-                artifact_type=metadata.get("artifact_type", "other"),
+                artifact_type=_artifact_type(metadata.get("artifact_type")),
                 source_type="local",
                 uri=str(path),
                 last_reviewed_at=metadata.get("last_reviewed_at"),
@@ -134,6 +132,7 @@ class RagEngineRetrievalBackend:
         metadata_filters: dict[str, Any] | None = None,
     ) -> list[EnterpriseFinding]:
         from vertexai import rag
+        from vertexai.rag.utils import resources as rag_resources
         import vertexai
 
         vertexai.init(
@@ -146,7 +145,7 @@ class RagEngineRetrievalBackend:
             text=query,
             rag_retrieval_config=rag.RagRetrievalConfig(
                 top_k=self.settings.vigil_retrieval_top_k,
-                filter=rag.utils.resources.Filter(
+                filter=rag_resources.Filter(
                     vector_distance_threshold=self.settings.vigil_rag_distance_threshold
                 ),
             ),
@@ -158,11 +157,7 @@ class RagEngineRetrievalBackend:
         documents = _unique_documents(chunks)
         mappings = _build_mappings(
             chunks,
-            [
-                obligation
-                for finding in source_findings
-                for obligation in finding.obligations
-            ],
+            [obligation for finding in source_findings for obligation in finding.obligations],
         )
         if source_findings and not mappings:
             return []
@@ -218,7 +213,9 @@ def _filter_chunks(
 def _matches_filter(document: EnterpriseDocument, key: str, value: Any) -> bool:
     if value in (None, "", []):
         return True
-    values = {str(item).lower() for item in value} if isinstance(value, list) else {str(value).lower()}
+    values = (
+        {str(item).lower() for item in value} if isinstance(value, list) else {str(value).lower()}
+    )
     if key == "domain":
         haystack = " ".join(
             item or ""
@@ -235,6 +232,36 @@ def _matches_filter(document: EnterpriseDocument, key: str, value: Any) -> bool:
     if candidate is None:
         return True
     return str(candidate).lower() in values
+
+
+ArtifactType = Literal[
+    "policy",
+    "control",
+    "sop",
+    "contract",
+    "meeting_note",
+    "template",
+    "inventory",
+    "other",
+]
+
+
+def _artifact_type(value: str | None) -> ArtifactType:
+    if value == "policy":
+        return "policy"
+    if value == "control":
+        return "control"
+    if value == "sop":
+        return "sop"
+    if value == "contract":
+        return "contract"
+    if value == "meeting_note":
+        return "meeting_note"
+    if value == "template":
+        return "template"
+    if value == "inventory":
+        return "inventory"
+    return "other"
 
 
 def _chunk_markdown(document: EnterpriseDocument, body: str) -> list[EnterpriseChunk]:
@@ -304,7 +331,9 @@ def _build_mappings(
 
     mappings: list[ObligationMapping] = []
     for obligation in obligations:
-        obligation_terms = set(_tokenize(obligation.text)) | _expand_terms(set(_tokenize(obligation.text)))
+        obligation_terms = set(_tokenize(obligation.text)) | _expand_terms(
+            set(_tokenize(obligation.text))
+        )
         best_chunks = sorted(
             chunks,
             key=lambda chunk: len(obligation_terms & set(_tokenize(chunk.text))),

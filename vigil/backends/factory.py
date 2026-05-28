@@ -9,7 +9,11 @@ from vigil.backends.org_context import (
     LocalOrgContextRegistry,
     OrgContextRegistry,
 )
-from vigil.backends.retrieval import LocalRetrievalBackend, RagEngineRetrievalBackend, RetrievalBackend
+from vigil.backends.retrieval import (
+    LocalRetrievalBackend,
+    RagEngineRetrievalBackend,
+    RetrievalBackend,
+)
 from vigil.backends.source import GeminiWebSourceBackend, MockSourceBackend, SourceBackend
 from vigil.settings import Settings, get_settings
 

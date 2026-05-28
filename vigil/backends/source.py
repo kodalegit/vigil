@@ -1,7 +1,7 @@
 import json
 import re
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Any, Protocol
 
 from google import genai
 from google.genai import types
@@ -11,6 +11,7 @@ from vigil.schemas import (
     Citation,
     MonitoringInstruction,
     RegulatoryObligation,
+    RiskLevel,
     SourceEvidence,
     SourceFinding,
 )
@@ -70,7 +71,7 @@ class MockSourceBackend:
                         section_id="deployer-obligations",
                         jurisdiction=jurisdiction,
                         topics=["human oversight", domain],
-                        risk_level="high",
+                        risk_level=RiskLevel.high,
                         source_url=source if source.startswith("http") else None,
                         source_quote=source_quote,
                         confidence="high",
@@ -84,7 +85,7 @@ class MockSourceBackend:
                         section_id="deployer-obligations",
                         jurisdiction=jurisdiction,
                         topics=["monitoring", "incident response", domain],
-                        risk_level="high",
+                        risk_level=RiskLevel.high,
                         source_url=source if source.startswith("http") else None,
                         source_quote=source_quote,
                         confidence="high",
@@ -98,7 +99,7 @@ class MockSourceBackend:
                         section_id="deployer-obligations",
                         jurisdiction=jurisdiction,
                         topics=["evidence retention", "audit", domain],
-                        risk_level="high",
+                        risk_level=RiskLevel.high,
                         source_url=source if source.startswith("http") else None,
                         source_quote=source_quote,
                         confidence="medium",
@@ -153,7 +154,7 @@ def _mock_shipping_finding(
                 section_id="vessel-discharge-reporting",
                 jurisdiction=jurisdiction,
                 topics=["shipping compliance", domain],
-                risk_level="medium",
+                risk_level=RiskLevel.medium,
                 source_url=source if source.startswith("http") else None,
                 source_quote=source_quote,
                 confidence="high",
@@ -352,8 +353,8 @@ def _append_uncertainty(current: str | None, notes: list[str]) -> str | None:
 
 
 async def _extract_obligations_with_model(
-    client: genai.Client,
-    settings: Settings,
+    client: Any,
+    settings: Any,
     instruction: MonitoringInstruction,
     grounded_text: str,
     evidence: list[SourceEvidence],
@@ -447,7 +448,7 @@ def _load_json_object(text: str) -> dict:
     return json.loads(stripped)
 
 
-def _grounding_evidence(response: types.GenerateContentResponse) -> list[SourceEvidence]:
+def _grounding_evidence(response: Any) -> list[SourceEvidence]:
     candidates = response.candidates or []
     if not candidates or not candidates[0].grounding_metadata:
         return []
@@ -462,7 +463,7 @@ def _grounding_evidence(response: types.GenerateContentResponse) -> list[SourceE
         snippet = ""
         for support in supports:
             if support.grounding_chunk_indices and index in support.grounding_chunk_indices:
-                snippet = support.segment.text if support.segment else ""
+                snippet = support.segment.text if support.segment and support.segment.text else ""
                 break
         evidence.append(
             SourceEvidence(
@@ -470,9 +471,7 @@ def _grounding_evidence(response: types.GenerateContentResponse) -> list[SourceE
                 url=chunk.web.uri,
                 source_type="web",
                 snippet=snippet or "Grounded source returned by Gemini Google Search.",
-                published_at=_normalize_source_date(
-                    f"{chunk.web.title or ''}\n{snippet}"
-                ),
+                published_at=_normalize_source_date(f"{chunk.web.title or ''}\n{snippet}"),
                 confidence="medium",
             )
         )
@@ -583,7 +582,7 @@ def _fallback_obligations_from_grounded_text(
             text=obligation_text,
             jurisdiction=jurisdiction,
             topics=topics,
-            risk_level="high",
+            risk_level=RiskLevel.high,
             source_url=source_url,
             source_quote=text[:500] or obligation_text,
             confidence="medium",

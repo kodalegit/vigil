@@ -1,6 +1,7 @@
 import os
 
 import google.auth
+import google.auth.exceptions
 from google.adk.agents import Agent
 from google.adk.apps import App
 from google.adk.tools import FunctionTool
@@ -12,6 +13,7 @@ from vigil.backends.org_context import build_context_update_proposal
 from vigil.schemas import (
     AuditEvent,
     ImpactDecision,
+    MemoryTopic,
     MemoryWriteProposal,
     MonitoringInstruction,
     SourceFinding,
@@ -106,11 +108,7 @@ async def map_enterprise_context(
     )
     parsed_source_findings = _parse_source_finding_dicts(source_findings)
     findings = await create_backends().retrieval.search(instruction, parsed_source_findings)
-    return {
-        "enterprise_findings": [
-            finding.model_dump(mode="json") for finding in findings
-        ]
-    }
+    return {"enterprise_findings": [finding.model_dump(mode="json") for finding in findings]}
 
 
 async def run_regulatory_impact_analysis(
@@ -176,7 +174,9 @@ async def get_current_profile(org_id: str = "default-org") -> dict:
         The approved org profile, source policy, Slack preferences, monitoring
         profiles, and obligation inventory.
     """
-    context = await create_backends().org_context.get_context(org_id)
+    backends = create_backends()
+    assert backends.org_context is not None
+    context = await backends.org_context.get_context(org_id)
     return {"org_context": context.model_dump(mode="json")}
 
 
@@ -228,6 +228,8 @@ async def propose_context_update(
         A stored proposal with a diff and approval state.
     """
     backends = create_backends()
+    assert backends.org_context is not None
+    assert backends.memory is not None
     current = await backends.org_context.get_context(org_id)
     updates: dict = {}
     profile_updates = {
@@ -267,9 +269,7 @@ async def propose_context_update(
             trust_level="trusted",
         )
         source_policy = current.source_policy.model_copy(deep=True)
-        sources = [
-            item for item in source_policy.allowlisted_sources if item.url != source.url
-        ]
+        sources = [item for item in source_policy.allowlisted_sources if item.url != source.url]
         sources.append(source)
         updates["source_policy"] = {
             "allowlisted_sources": [item.model_dump(mode="python") for item in sources]
@@ -279,7 +279,7 @@ async def propose_context_update(
     if memory_text:
         memory_writes.append(
             MemoryWriteProposal(
-                topic=memory_topic,
+                topic=_memory_topic(memory_topic),
                 text=memory_text,
                 org_id=org_id,
                 user_id=requested_by,
@@ -316,6 +316,7 @@ async def validate_context_update(proposal_id: str) -> dict:
         Validation errors, if any.
     """
     registry = create_backends().org_context
+    assert registry is not None
     proposal = await registry.get_proposal(proposal_id)
     if not proposal:
         return {"valid": False, "errors": ["Proposal not found."]}
@@ -334,6 +335,8 @@ async def commit_approved_context_update(proposal_id: str, approved: bool = Fals
         Commit result and any memories written.
     """
     backends = create_backends()
+    assert backends.org_context is not None
+    assert backends.memory is not None
     proposal = await backends.org_context.get_proposal(proposal_id)
     if not proposal:
         return {
@@ -389,7 +392,9 @@ async def search_org_memory(
     Returns:
         Matching advisory memory records.
     """
-    memories = await create_backends().memory.search(
+    backends = create_backends()
+    assert backends.memory is not None
+    memories = await backends.memory.search(
         org_id=org_id,
         user_id=user_id,
         query=query,
@@ -420,14 +425,16 @@ async def write_approved_memory(
         The written memory record, or an approval error.
     """
     proposal = MemoryWriteProposal(
-        topic=topic,
+        topic=_memory_topic(topic),
         text=text,
         org_id=org_id,
         user_id=user_id,
         registry_refs=_parse_csv(registry_refs),
         approved=approved,
     )
-    memory = await create_backends().memory.write_approved(proposal)
+    backends = create_backends()
+    assert backends.memory is not None
+    memory = await backends.memory.write_approved(proposal)
     return {"memory": memory.model_dump(mode="json")}
 
 
@@ -448,6 +455,20 @@ def _parse_csv(value: str | None) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _memory_topic(value: str) -> MemoryTopic:
+    if value == "source_policy":
+        return "source_policy"
+    if value == "notification_preferences":
+        return "notification_preferences"
+    if value == "false_positive_patterns":
+        return "false_positive_patterns"
+    if value == "regulatory_scope":
+        return "regulatory_scope"
+    if value == "obligation_summaries":
+        return "obligation_summaries"
+    return "other"
 
 
 def _slug(value: str) -> str:

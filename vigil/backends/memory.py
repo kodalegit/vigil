@@ -1,4 +1,4 @@
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 from vigil.schemas import MemoryRecord, MemoryTopic, MemoryWriteProposal
@@ -142,7 +142,7 @@ class GoogleMemoryBankBackend:
             topic=proposal.topic,
             text=proposal.text,
             registry_refs=proposal.registry_refs,
-            provenance=metadata["provenance"],
+            provenance=_provenance(metadata.get("provenance")),
         )
 
     def _service(self):
@@ -166,12 +166,14 @@ def _memory_entry_to_record(entry: Any, *, org_id: str, user_id: str | None) -> 
     text = _entry_text(entry)
     topic = _topic(metadata.get("topic"))
     return MemoryRecord(
-        memory_id=metadata.get("memory_id") or getattr(entry, "id", None) or f"mem-{uuid4().hex[:12]}",
+        memory_id=metadata.get("memory_id")
+        or getattr(entry, "id", None)
+        or f"mem-{uuid4().hex[:12]}",
         org_id=metadata.get("org_id") or org_id,
         user_id=metadata.get("user_id") or user_id,
         topic=topic,
         text=text,
-        provenance=metadata.get("provenance") or "derived",
+        provenance=_provenance(metadata.get("provenance")),
         registry_refs=list(metadata.get("registry_refs") or []),
     )
 
@@ -183,14 +185,24 @@ def _entry_text(entry: Any) -> str:
 
 
 def _topic(value: object) -> MemoryTopic:
-    allowed = {
-        "source_policy",
-        "notification_preferences",
-        "false_positive_patterns",
-        "regulatory_scope",
-        "obligation_summaries",
-        "other",
-    }
-    if isinstance(value, str) and value in allowed:
-        return value
+    if value == "source_policy":
+        return "source_policy"
+    if value == "notification_preferences":
+        return "notification_preferences"
+    if value == "false_positive_patterns":
+        return "false_positive_patterns"
+    if value == "regulatory_scope":
+        return "regulatory_scope"
+    if value == "obligation_summaries":
+        return "obligation_summaries"
     return "other"
+
+
+def _provenance(
+    value: object,
+) -> Literal["approved_registry", "approved_user_preference", "derived"]:
+    if value == "approved_registry":
+        return "approved_registry"
+    if value == "approved_user_preference":
+        return "approved_user_preference"
+    return "derived"

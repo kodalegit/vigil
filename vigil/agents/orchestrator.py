@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from hashlib import sha256
+from typing import Literal
 
 from vigil.agents.enterprise_context import EnterpriseContextAgent
 from vigil.agents.source_monitoring import SourceMonitoringAgent
@@ -14,11 +15,14 @@ from vigil.schemas import (
     ImpactDecision,
     MonitoringInstruction,
     ObligationRegistryEntry,
+    ObligationVersion,
     OrgContext,
     RegulatoryObligation,
     RiskLevel,
     SourceFinding,
 )
+
+ImpactClassification = Literal["actionable", "informational", "irrelevant", "ambiguous"]
 
 
 class VigilOrchestrator:
@@ -491,7 +495,7 @@ def _classify(
     source_findings: list[SourceFinding],
     enterprise_findings: list[EnterpriseFinding],
     context_pack: ContextPack,
-) -> str:
+) -> ImpactClassification:
     obligation_count = _count_obligations(source_findings)
     chunk_count = _count_chunks(enterprise_findings)
     mapping_count = _count_mappings(enterprise_findings)
@@ -688,15 +692,15 @@ def _false_positive_inventory_entries(
                     evidence_snippets=[obligation.source_quote],
                     owners=[marked_by],
                     versions=[
-                        {
-                            "version": 1,
-                            "canonical_text": obligation.text,
-                            "source_quote": obligation.source_quote,
-                            "source_url": obligation.source_url,
-                            "section_ref": obligation.section_id,
-                            "effective_date": obligation.effective_date,
-                            "content_hash": content_hash,
-                        }
+                        ObligationVersion(
+                            version=1,
+                            canonical_text=obligation.text,
+                            source_quote=obligation.source_quote,
+                            source_url=obligation.source_url,
+                            section_ref=obligation.section_id,
+                            effective_date=obligation.effective_date,
+                            content_hash=content_hash,
+                        )
                     ],
                 )
             )

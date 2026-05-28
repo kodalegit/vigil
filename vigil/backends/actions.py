@@ -77,8 +77,8 @@ class MockActionBackend:
 class SlackActionBackend:
     def __init__(
         self,
-        settings: Settings | None = None,
-        client: WebClient | None = None,
+        settings: Settings | Any | None = None,
+        client: WebClient | Any | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.client = client or WebClient(token=self.settings.slack_bot_token)

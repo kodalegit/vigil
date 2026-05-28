@@ -1,3 +1,5 @@
+from typing import Any
+
 from vigil.agents.orchestrator import VigilOrchestrator
 from vigil.backends import BackendBundle
 from vigil.backends.actions import MockActionBackend
@@ -10,6 +12,7 @@ from vigil.schemas import (
     EnterpriseFinding,
     MonitoringInstruction,
     RegulatoryObligation,
+    RiskLevel,
     SourceEvidence,
     SourceFinding,
 )
@@ -26,7 +29,7 @@ class ObligationOnlySourceBackend:
                         text="Review high-risk AI oversight procedures.",
                         jurisdiction=instruction.jurisdiction or "European Union",
                         topics=["human oversight"],
-                        risk_level="high",
+                        risk_level=RiskLevel.high,
                         source_quote="Deployers shall review oversight procedures.",
                         confidence="high",
                     )
@@ -47,6 +50,7 @@ class EmptyRetrievalBackend:
         self,
         instruction: MonitoringInstruction,
         source_findings: list[SourceFinding],
+        metadata_filters: dict[str, Any] | None = None,
     ) -> list[EnterpriseFinding]:
         return []
 
@@ -75,7 +79,7 @@ class UnrelatedObligationSourceBackend:
                         text="Report maritime ballast water discharge events to the port authority.",
                         jurisdiction=instruction.jurisdiction or "European Union",
                         topics=["shipping compliance"],
-                        risk_level="medium",
+                        risk_level=RiskLevel.medium,
                         source_quote="Vessels must report ballast discharge events.",
                         confidence="high",
                     )

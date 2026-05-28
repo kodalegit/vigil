@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import requests
@@ -67,12 +67,8 @@ def start_server() -> subprocess.Popen[str]:
     )
 
     # Start threads to log stdout and stderr in real-time
-    threading.Thread(
-        target=log_output, args=(process.stdout, logger.info), daemon=True
-    ).start()
-    threading.Thread(
-        target=log_output, args=(process.stderr, logger.error), daemon=True
-    ).start()
+    threading.Thread(target=log_output, args=(process.stdout, logger.info), daemon=True).start()
+    threading.Thread(target=log_output, args=(process.stderr, logger.error), daemon=True).start()
 
     return process
 
@@ -124,7 +120,7 @@ def test_chat_stream(server_fixture: subprocess.Popen[str]) -> None:
     session_response = requests.post(
         session_url,
         headers=HEADERS,
-        json=session_data,
+        json=cast(Any, session_data),
         timeout=60,
     )
     assert session_response.status_code == 200
@@ -144,7 +140,7 @@ def test_chat_stream(server_fixture: subprocess.Popen[str]) -> None:
     }
 
     response = requests.post(
-        STREAM_URL, headers=HEADERS, json=data, stream=True, timeout=60
+        STREAM_URL, headers=HEADERS, json=cast(Any, data), stream=True, timeout=60
     )
     assert response.status_code == 200
     # Parse SSE events from response
@@ -177,16 +173,10 @@ def test_chat_stream(server_fixture: subprocess.Popen[str]) -> None:
 def test_chat_stream_error_handling(server_fixture: subprocess.Popen[str]) -> None:
     """Test the chat stream error handling."""
     logger.info("Starting chat stream error handling test")
-    data = {
-        "input": {"messages": [{"type": "invalid_type", "content": "Cause an error"}]}
-    }
-    response = requests.post(
-        STREAM_URL, headers=HEADERS, json=data, stream=True, timeout=10
-    )
+    data = {"input": {"messages": [{"type": "invalid_type", "content": "Cause an error"}]}}
+    response = requests.post(STREAM_URL, headers=HEADERS, json=data, stream=True, timeout=10)
 
-    assert response.status_code == 422, (
-        f"Expected status code 422, got {response.status_code}"
-    )
+    assert response.status_code == 422, f"Expected status code 422, got {response.status_code}"
     logger.info("Error handling test completed successfully")
 
 
@@ -204,6 +194,6 @@ def test_collect_feedback(server_fixture: subprocess.Popen[str]) -> None:
     }
 
     response = requests.post(
-        FEEDBACK_URL, json=feedback_data, headers=HEADERS, timeout=10
+        FEEDBACK_URL, json=cast(Any, feedback_data), headers=HEADERS, timeout=10
     )
     assert response.status_code == 200
