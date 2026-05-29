@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
 import json
 import logging
 import os
+import urllib.error
+import urllib.request
 
 import google.auth
 from fastapi import FastAPI, HTTPException, Request
@@ -104,48 +107,15 @@ async def handle_slack_interaction(request: Request) -> dict[str, str | None]:
 
     action_id = slack_action_id(payload)
     action_value = slack_action_value(payload)
-    approval_status: str | None = None
-    ticket_id: str | None = None
-    if action_id == "approve_ticket":
+    if action_id in {"approve_ticket", "ask_follow_up", "mark_false_positive"}:
         analysis_id = action_value.get("analysis_id")
         if not isinstance(analysis_id, str) or not analysis_id:
             raise HTTPException(status_code=400, detail="Slack action is missing analysis_id.")
-        backends = create_backends()
-        if backends.decisions is None:
-            raise HTTPException(status_code=503, detail="Decision store is not configured.")
-        decision = await backends.decisions.get(analysis_id)
-        if decision is None:
-            raise HTTPException(status_code=404, detail="Impact decision was not found.")
-        approved = await VigilOrchestrator(backends=backends).record_approval(
-            decision,
-            approved_by=slack_user_id(payload) or "slack-user",
-            approved=True,
-            idempotency_key=action_value.get("idempotency_key")
-            if isinstance(action_value.get("idempotency_key"), str)
-            else None,
-        )
-        approval_status = approved.approval_status
-        ticket_id = approved.ticket_id
-    elif action_id == "mark_false_positive":
-        analysis_id = action_value.get("analysis_id")
-        if not isinstance(analysis_id, str) or not analysis_id:
-            raise HTTPException(status_code=400, detail="Slack action is missing analysis_id.")
-        backends = create_backends()
-        if backends.decisions is None:
-            raise HTTPException(status_code=503, detail="Decision store is not configured.")
-        decision = await backends.decisions.get(analysis_id)
-        if decision is None:
-            raise HTTPException(status_code=404, detail="Impact decision was not found.")
-        updated = await VigilOrchestrator(backends=backends).record_false_positive(
-            decision,
-            marked_by=slack_user_id(payload) or "slack-user",
-        )
-        approval_status = updated.approval_status
-        ticket_id = updated.ticket_id
+        asyncio.create_task(_process_slack_interaction(payload))
 
     _log_struct(
         {
-            "event": "slack_interaction_verified",
+            "event": "slack_interaction_queued",
             "action_id": action_id,
             "team_id": (
                 payload.get("team", {}).get("id") if isinstance(payload.get("team"), dict) else None
@@ -159,9 +129,139 @@ async def handle_slack_interaction(request: Request) -> dict[str, str | None]:
     return {
         "status": "acknowledged",
         "action_id": action_id,
-        "approval_status": approval_status,
-        "ticket_id": ticket_id,
+        "approval_status": None,
+        "ticket_id": None,
     }
+
+
+async def _process_slack_interaction(payload: dict) -> None:
+    """Process Slack actions after the request has been acknowledged."""
+    action_id = slack_action_id(payload)
+    action_value = slack_action_value(payload)
+    approval_status: str | None = None
+    ticket_id: str | None = None
+
+    try:
+        if action_id == "approve_ticket":
+            analysis_id = _slack_analysis_id(action_value)
+            backends = create_backends()
+            if backends.decisions is None:
+                raise RuntimeError("Decision store is not configured.")
+            decision = await backends.decisions.get(analysis_id)
+            if decision is None:
+                raise RuntimeError(f"Impact decision was not found: {analysis_id}")
+            approved = await VigilOrchestrator(backends=backends).record_approval(
+                decision,
+                approved_by=slack_user_id(payload) or "slack-user",
+                approved=True,
+                idempotency_key=action_value.get("idempotency_key")
+                if isinstance(action_value.get("idempotency_key"), str)
+                else None,
+            )
+            approval_status = approved.approval_status
+            ticket_id = approved.ticket_id
+        elif action_id == "mark_false_positive":
+            analysis_id = _slack_analysis_id(action_value)
+            backends = create_backends()
+            if backends.decisions is None:
+                raise RuntimeError("Decision store is not configured.")
+            decision = await backends.decisions.get(analysis_id)
+            if decision is None:
+                raise RuntimeError(f"Impact decision was not found: {analysis_id}")
+            updated = await VigilOrchestrator(backends=backends).record_false_positive(
+                decision,
+                marked_by=slack_user_id(payload) or "slack-user",
+            )
+            approval_status = updated.approval_status
+            ticket_id = updated.ticket_id
+        elif action_id == "ask_follow_up":
+            analysis_id = _slack_analysis_id(action_value)
+            backends = create_backends()
+            if backends.decisions is None:
+                raise RuntimeError("Decision store is not configured.")
+            decision = await backends.decisions.get(analysis_id)
+            if decision is None:
+                raise RuntimeError(f"Impact decision was not found: {analysis_id}")
+            await VigilOrchestrator(backends=backends).record_follow_up_requested(
+                decision,
+                requested_by=slack_user_id(payload) or "slack-user",
+            )
+            await _post_slack_response(
+                payload,
+                "Vigil recorded the follow-up request. This decision remains pending review.",
+            )
+    except Exception as error:
+        logger.exception("Slack interaction processing failed")
+        await _post_slack_response(
+            payload,
+            f"Vigil could not complete `{action_id}`: {error}",
+        )
+        _log_struct(
+            {
+                "event": "slack_interaction_failed",
+                "action_id": action_id,
+                "error": str(error),
+            },
+            severity="ERROR",
+        )
+        return
+
+    if action_id == "approve_ticket":
+        await _post_slack_response(
+            payload,
+            f"Vigil approved this decision and created ticket `{ticket_id}`.",
+        )
+    elif action_id == "mark_false_positive":
+        await _post_slack_response(
+            payload,
+            "Vigil recorded this decision as a false positive for future suppression.",
+        )
+
+    _log_struct(
+        {
+            "event": "slack_interaction_processed",
+            "action_id": action_id,
+            "approval_status": approval_status,
+            "ticket_id": ticket_id,
+            "team_id": (
+                payload.get("team", {}).get("id") if isinstance(payload.get("team"), dict) else None
+            ),
+            "user_id": (
+                payload.get("user", {}).get("id") if isinstance(payload.get("user"), dict) else None
+            ),
+        },
+        severity="INFO",
+    )
+
+
+def _slack_analysis_id(action_value: dict) -> str:
+    analysis_id = action_value.get("analysis_id")
+    if not isinstance(analysis_id, str) or not analysis_id:
+        raise RuntimeError("Slack action is missing analysis_id.")
+    return analysis_id
+
+
+async def _post_slack_response(payload: dict, text: str) -> None:
+    response_url = payload.get("response_url")
+    if not isinstance(response_url, str) or not response_url:
+        return
+    body = json.dumps(
+        {
+            "response_type": "ephemeral",
+            "replace_original": False,
+            "text": text,
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        response_url,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        await asyncio.to_thread(urllib.request.urlopen, request, timeout=5)
+    except (urllib.error.URLError, TimeoutError) as error:
+        logger.warning("Slack response_url update failed: %s", error)
 
 
 def _log_struct(payload: dict, severity: str = "INFO") -> None:

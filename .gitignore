@@ -9,6 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
+.env
+
 # Local ADK / agents-cli runtime artifacts
 .google-agents-cli/
 **/.adk/

@@ -389,6 +389,26 @@ class VigilOrchestrator:
             updated = await self.backends.decisions.save(updated)
         return updated
 
+    async def record_follow_up_requested(
+        self,
+        decision: ImpactDecision,
+        requested_by: str,
+    ) -> ImpactDecision:
+        audit_events = list(decision.audit_events)
+        await self._record_audit(
+            audit_events,
+            event_type="follow_up_requested",
+            message="Human reviewer requested follow-up before final disposition.",
+            metadata={
+                "analysis_id": decision.analysis_id,
+                "requested_by": requested_by,
+            },
+        )
+        updated = decision.model_copy(update={"audit_events": audit_events}, deep=True)
+        if self.backends.decisions is not None:
+            updated = await self.backends.decisions.save(updated)
+        return updated
+
     async def _record_audit(
         self,
         audit_events: list[AuditEvent],
