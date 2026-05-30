@@ -368,11 +368,20 @@ async def test_orchestrator_records_follow_up_request_without_disposition() -> N
     decision = await orchestrator.analyze(
         MonitoringInstruction(query="EU AI Act deployer obligations")
     )
-    updated = await orchestrator.record_follow_up_requested(decision, requested_by="U123")
+    updated = await orchestrator.record_follow_up_requested(
+        decision,
+        requested_by="U123",
+        note="Please retrieve the cited policy owner.",
+    )
     stored = await decisions.get(decision.analysis_id)
 
     assert updated.approval_status == "pending"
     assert updated.ticket_status == "blocked_pending_approval"
     assert stored is not None
     assert any(event.event_type == "follow_up_requested" for event in stored.audit_events)
+    assert any(
+        event.metadata.get("note") == "Please retrieve the cited policy owner."
+        for event in stored.audit_events
+        if event.event_type == "follow_up_requested"
+    )
     assert any(event.event_type == "follow_up_requested" for event in audit.events)

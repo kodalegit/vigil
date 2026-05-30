@@ -283,7 +283,45 @@ Minimum `slack.post_message` payload:
 
 The Slack message should avoid leaking private document contents into unauthorized channels. The orchestrator should respect enterprise permissions and include links or short excerpts only when allowed. Approval buttons should carry a stable `analysis_id` and recover full decision state from the decision store before applying approval.
 
-### 7.2 Audit Event Schema
+### 7.2 Slack Onboarding and Callback Contract
+
+Slack is also the first onboarding surface for organization context. The production
+identity model is:
+
+- Prefer Slack Enterprise Grid ID when present: `slack-ent-{enterprise_id}`.
+- Otherwise use workspace/team ID: `slack-team-{team_id}`.
+- Do not use Agent Runtime workload identity as the customer organization ID.
+- Store approved organization context in the typed org context registry, backed by
+  Firestore for live deployments.
+
+The onboarding flow is:
+
+1. A Slack slash command such as `/onboard`, `/setup`, or `/vigil onboard` opens a
+   modal.
+2. The modal captures org profile, jurisdictions, risk tolerance, Slack review
+   channel, reviewer IDs, trusted source allowlist, and an initial monitoring
+   profile.
+3. The submission is converted into a `ContextUpdateProposal`.
+4. A review modal shows the proposal diff.
+5. The reviewer explicitly approves before the proposal is committed.
+
+Slack interactive and modal callbacks must acknowledge quickly. The FastAPI Slack
+endpoint should verify the Slack signature, parse the payload, return an immediate
+modal update or acknowledgement, and perform Firestore/context writes in a background
+task. Background tasks can then update the modal through Slack `views.update`.
+This avoids Slack/ngrok timeouts when Firestore or Google auth is slow.
+
+Approval, false-positive, and follow-up callbacks must recover full decision state
+from the decision store. The callback handler should verify that the Slack-derived
+org ID and action payload org ID match the stored `ImpactDecision.org_id`. If
+reviewers are configured in `OrgContext.slack_preferences.reviewer_user_ids`, only
+those Slack users may approve, mark false positive, or submit follow-up requests.
+
+The "Ask follow-up" action opens a Slack modal that captures the reviewer question
+or note. Vigil records this as a `follow_up_requested` audit event and leaves the
+decision pending.
+
+### 7.3 Audit Event Schema
 
 Every material decision or external action should produce an audit event.
 

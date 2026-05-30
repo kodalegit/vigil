@@ -98,6 +98,16 @@ organization context registry so future runs can suppress the same obligation. `
 can post Block Kit alerts through Slack Web API when `VIGIL_ACTION_BACKEND=slack`; this
 still needs a real workspace smoke test.
 
+Slack onboarding now uses slash commands plus modal submissions. The app derives
+`org_id` from Slack Enterprise ID first, then team ID, and writes approved profile,
+source, review-channel, reviewer, and monitoring preferences through the typed org
+context registry. Modal submissions acknowledge immediately and move Firestore/context
+writes into background tasks that update the modal with `views.update`; this keeps
+Slack interactive callbacks inside Slack's response window even when live storage is
+slow. Approval, false-positive, and follow-up callbacks verify the stored decision org
+and reviewer allowlist before mutating state. "Ask follow-up" captures a reviewer note
+in a modal and records it as a `follow_up_requested` audit event.
+
 Vigil now has local JSONL and Firestore storage implementations for impact decisions
 and approval updates. Firestore is also suitable for the typed org context registry
 because profiles, source policies, Slack preferences, monitoring profiles, proposals,
@@ -190,15 +200,17 @@ Connect:
 Verify:
 
 - `VIGIL_ACTION_BACKEND=slack` posts a Block Kit alert to a private test channel
+- `/onboard`, `/setup`, or `/vigil onboard` opens the onboarding modal and commits approved org context
 - approve button creates exactly one ticket result when clicked repeatedly
 - false-positive button records inventory and suppresses the same obligation in a later run
+- ask-follow-up opens a modal, records the reviewer note, and leaves the decision pending
 - Slack messages include only permission-safe snippets and stable IDs, not full documents
 
 Improve before deployment:
 
 - implement the real ticketing backend behind `ActionBackend.create_ticket`
-- add explicit handling for "Ask follow-up"
-- add channel allowlists and reviewer authorization checks
+- add channel allowlists beyond the current reviewer authorization checks
+- persist Slack installation/token metadata for multi-workspace production installs
 
 ### 4. Managed Retrieval Over Drive Or Cloud Storage
 

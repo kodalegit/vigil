@@ -393,16 +393,20 @@ class VigilOrchestrator:
         self,
         decision: ImpactDecision,
         requested_by: str,
+        note: str | None = None,
     ) -> ImpactDecision:
         audit_events = list(decision.audit_events)
+        metadata = {
+            "analysis_id": decision.analysis_id,
+            "requested_by": requested_by,
+        }
+        if note:
+            metadata["note"] = note[:500]
         await self._record_audit(
             audit_events,
             event_type="follow_up_requested",
             message="Human reviewer requested follow-up before final disposition.",
-            metadata={
-                "analysis_id": decision.analysis_id,
-                "requested_by": requested_by,
-            },
+            metadata=metadata,
         )
         updated = decision.model_copy(update={"audit_events": audit_events}, deep=True)
         if self.backends.decisions is not None:

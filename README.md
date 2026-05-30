@@ -94,6 +94,29 @@ Vigil uses a deliberately simple agent architecture:
 
 See [`docs/vigil-system-design.md`](docs/vigil-system-design.md) for the detailed system design.
 
+## Slack Onboarding
+
+Slack is the first setup surface for organization context. The local flow supports:
+
+- `/vigil onboard`, `/vigil setup`, `/onboard`, or `/setup` through `/slack/commands`
+- interactive buttons and modal submissions through `/slack/interactions`
+- org identity derived from Slack Enterprise ID first, then workspace team ID
+- approved setup persisted through the existing organization context registry
+
+For local ngrok testing:
+
+1. Set `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and `VIGIL_STORAGE_BACKEND=firestore` or `local`.
+2. Run the API with `bash -ic 'uv run uvicorn vigil.fast_api_app:app --reload --host 0.0.0.0 --port 8000'`.
+3. Point the Slack slash command request URL to `https://<ngrok-host>/slack/commands`.
+4. Point the Slack interactivity request URL to `https://<ngrok-host>/slack/interactions`.
+5. Run `/vigil onboard`, `/onboard`, or `/setup` in Slack, fill the modal, review the diff, and approve setup.
+
+Slack modal submissions are acknowledged immediately and registry writes happen in
+the background. If Slack shows "We had some trouble connecting," check the uvicorn
+logs and ngrok request details for `/slack/interactions`; it usually means the
+server did not respond within Slack's interactive callback timeout or the signing
+secret rejected the request.
+
 ## Design Principles
 
 - Keep the architecture simple: one orchestrator, a small number of bounded subagents, and mockable tools.
