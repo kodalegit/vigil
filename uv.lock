@@ -1106,6 +1106,23 @@ wheels = [
 ]
 
 [[package]]
+name = "google-cloud-secret-manager"
+version = "2.28.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-api-core", extra = ["grpc"] },
+    { name = "google-auth" },
+    { name = "grpc-google-iam-v1" },
+    { name = "grpcio" },
+    { name = "proto-plus" },
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/a3/c0d4535d841b65421a043e32b3a4acc66431da8e0f99534204112322ec04/google_cloud_secret_manager-2.28.0.tar.gz", hash = "sha256:5763f42a449c27597fb42d40fa93e2c56b02dbceba0c41da202fb97e810cb278", size = 279947 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ba/ee/b69997ea7dfa1e23b6d6e872022727e16d1286ccce6c8ae526b0fe5f0ca5/google_cloud_secret_manager-2.28.0-py3-none-any.whl", hash = "sha256:15bcb9d7d3442d842ebac94e2d6e428a11d79cf1aeb91a005a0576f257643317", size = 225578 },
+]
+
+[[package]]
 name = "google-cloud-storage"
 version = "3.10.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3656,6 +3673,7 @@ dependencies = [
     { name = "google-auth-oauthlib" },
     { name = "google-cloud-aiplatform", extra = ["agent-engines"] },
     { name = "google-cloud-firestore" },
+    { name = "google-cloud-secret-manager" },
     { name = "google-genai" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -3703,6 +3721,7 @@ requires-dist = [
     { name = "google-auth-oauthlib", specifier = ">=1.0.0" },
     { name = "google-cloud-aiplatform", extras = ["agent-engines"], specifier = ">=1.112.0" },
     { name = "google-cloud-firestore", specifier = ">=2.0.0" },
+    { name = "google-cloud-secret-manager", specifier = ">=2.0.0" },
     { name = "google-genai", specifier = ">=1.0.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
     { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.13.0" },

@@ -1,8 +1,11 @@
 import json
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
+
+from google.cloud import firestore
 
 from vigil.schemas import AuditEvent
+from vigil.settings import Settings, get_settings
 
 
 class AuditBackend(Protocol):
@@ -57,3 +60,41 @@ def _load_events(path: Path) -> list[AuditEvent]:
         except (json.JSONDecodeError, ValueError):
             continue
     return events
+
+
+class FirestoreAuditBackend:
+    def __init__(
+        self,
+        settings: Settings | Any | None = None,
+        client: Any = None,
+    ) -> None:
+        self.settings = settings or get_settings()
+        self.client: Any = client or firestore.Client(project=self.settings.google_cloud_project)
+        self.collection_name = f"{self.settings.vigil_firestore_collection_prefix}_audit_events"
+
+    async def record(self, event: AuditEvent) -> None:
+        self.client.collection(self.collection_name).document(event.event_id).set(
+            event.model_dump(mode="json")
+        )
+
+    async def list_events(
+        self,
+        event_type: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> list[AuditEvent]:
+        collection = self.client.collection(self.collection_name)
+        snapshots = collection.stream()
+        events = [
+            AuditEvent.model_validate(snapshot.to_dict() or {})
+            for snapshot in snapshots
+            if snapshot.exists
+        ]
+        if event_type:
+            events = [event for event in events if event.event_type == event_type]
+        if metadata:
+            events = [
+                event
+                for event in events
+                if all(event.metadata.get(key) == value for key, value in metadata.items())
+            ]
+        return [event.model_copy(deep=True) for event in events]

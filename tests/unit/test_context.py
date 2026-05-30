@@ -86,6 +86,27 @@ async def test_context_update_proposal_rejects_invalid_required_context() -> Non
         )
 
 
+async def test_context_update_proposal_validates_retrieval_resources() -> None:
+    registry = LocalOrgContextRegistry()
+
+    with pytest.raises(ValueError, match="requires a RAG corpus"):
+        await build_context_update_proposal(
+            registry,
+            org_id="invalid-retrieval-org",
+            summary="Add incomplete retrieval resource.",
+            updates={
+                "retrieval_resources": [
+                    {
+                        "resource_id": "rag",
+                        "name": "RAG corpus",
+                        "source_type": "rag_engine",
+                    }
+                ]
+            },
+            approved=True,
+        )
+
+
 async def test_context_update_proposal_validates_and_commits_approved_changes() -> None:
     registry = LocalOrgContextRegistry()
     proposal = await build_context_update_proposal(

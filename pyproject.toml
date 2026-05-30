@@ -8,6 +8,7 @@ dependencies = [
     "google-adk>=2.0.0",
     "google-cloud-aiplatform[agent_engines]>=1.112.0",
     "google-cloud-firestore>=2.0.0",
+    "google-cloud-secret-manager>=2.0.0",
     "google-genai>=1.0.0",
     "google-api-python-client>=2.0.0",
     "google-auth>=2.0.0",

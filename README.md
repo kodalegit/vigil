@@ -102,6 +102,7 @@ Slack is the first setup surface for organization context. The local flow suppor
 - interactive buttons and modal submissions through `/slack/interactions`
 - org identity derived from Slack Enterprise ID first, then workspace team ID
 - approved setup persisted through the existing organization context registry
+- optional enterprise retrieval resource capture for existing RAG corpus, Drive folder ID, or GCS URI
 
 For local ngrok testing:
 
@@ -116,6 +117,17 @@ the background. If Slack shows "We had some trouble connecting," check the uvico
 logs and ngrok request details for `/slack/interactions`; it usually means the
 server did not respond within Slack's interactive callback timeout or the signing
 secret rejected the request.
+
+For deployed environments, direct Slack/API key env vars can be replaced with
+Secret Manager references:
+
+```text
+SLACK_BOT_TOKEN_SECRET=projects/<project>/secrets/<name>/versions/latest
+SLACK_SIGNING_SECRET_SECRET=projects/<project>/secrets/<name>/versions/latest
+GOOGLE_API_KEY_SECRET=projects/<project>/secrets/<name>/versions/latest
+```
+
+Bare secret IDs also work when `GOOGLE_CLOUD_PROJECT` is set.
 
 ## Design Principles
 

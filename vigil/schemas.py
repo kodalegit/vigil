@@ -175,6 +175,18 @@ class MonitoringProfile(BaseModel):
     enabled: bool = True
 
 
+class RetrievalResource(BaseModel):
+    resource_id: str
+    name: str
+    source_type: Literal["drive", "gcs", "rag_engine"]
+    rag_corpus: str | None = None
+    drive_folder_id: str | None = None
+    gcs_uri: str | None = None
+    refresh_cadence: str | None = None
+    enabled: bool = True
+    notes: str | None = None
+
+
 class ObligationVersion(BaseModel):
     version: int
     canonical_text: str
@@ -213,6 +225,7 @@ class OrgContext(BaseModel):
     source_policy: SourcePolicy = Field(default_factory=SourcePolicy)
     slack_preferences: SlackPreferences = Field(default_factory=SlackPreferences)
     monitoring_profiles: list[MonitoringProfile] = Field(default_factory=list)
+    retrieval_resources: list[RetrievalResource] = Field(default_factory=list)
     obligation_inventory: list[ObligationRegistryEntry] = Field(default_factory=list)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

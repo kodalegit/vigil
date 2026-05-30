@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from vigil.backends.actions import ActionBackend, MockActionBackend, SlackActionBackend
-from vigil.backends.audit import AuditBackend, LocalAuditBackend
+from vigil.backends.audit import AuditBackend, FirestoreAuditBackend, LocalAuditBackend
 from vigil.backends.decisions import DecisionStore, FirestoreDecisionStore, LocalDecisionStore
 from vigil.backends.memory import GoogleMemoryBankBackend, LocalMemoryBackend, MemoryBackend
 from vigil.backends.org_context import (
@@ -35,7 +35,7 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
     source: SourceBackend
     retrieval: RetrievalBackend
     actions: ActionBackend
-    audit: AuditBackend = LocalAuditBackend(settings.vigil_audit_log_path)
+    audit: AuditBackend
     decisions: DecisionStore
     org_context: OrgContextRegistry
     memory: MemoryBackend
@@ -43,9 +43,11 @@ def create_backends(settings: Settings | None = None) -> BackendBundle:
     if settings.vigil_storage_backend == "local":
         decisions = LocalDecisionStore(settings.vigil_decision_store_path)
         org_context = LocalOrgContextRegistry()
+        audit = LocalAuditBackend(settings.vigil_audit_log_path)
     elif settings.vigil_storage_backend == "firestore":
         decisions = FirestoreDecisionStore(settings)
         org_context = FirestoreOrgContextRegistry(settings)
+        audit = FirestoreAuditBackend(settings)
     else:
         raise NotImplementedError(f"Unknown storage backend: {settings.vigil_storage_backend}")
 

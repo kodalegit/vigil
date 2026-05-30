@@ -70,6 +70,18 @@ for file search, metadata lookup, previews, and ingestion refresh workflows. MCP
 not provide the stable semantic chunk ranking and citation contract needed for Vigil's
 obligation-to-policy mapping loop.
 
+Slack onboarding can now capture retrieval resources as approved org context:
+
+- an existing Vertex AI RAG Engine corpus resource name
+- a Google Drive folder ID to import into a managed corpus
+- a Cloud Storage `gs://...` prefix to import into a managed corpus
+
+For production, the reviewer should first approve the retrieval resource during Slack
+onboarding, then an ingestion/refresh workflow should call the existing import helper
+or RAG Engine API, verify citation quality, and finally enable `VIGIL_RETRIEVAL_BACKEND=rag_engine`
+with the approved corpus. The org context registry stores the approved resource metadata;
+runtime settings still choose the active backend for now.
+
 Near-term path:
 
 1. Add a small local `data/corpus/` of synthetic AI governance docs.
@@ -109,18 +121,34 @@ and reviewer allowlist before mutating state. "Ask follow-up" captures a reviewe
 in a modal and records it as a `follow_up_requested` audit event.
 
 Vigil now has local JSONL and Firestore storage implementations for impact decisions
-and approval updates. Firestore is also suitable for the typed org context registry
-because profiles, source policies, Slack preferences, monitoring profiles, proposals,
-and approved obligation inventory records are document-shaped, tenant-scoped, and
-mostly read by ID. Use `VIGIL_STORAGE_BACKEND=firestore` for live storage tests. Keep
-audit/event analytics separate if we later need append-heavy reporting in BigQuery.
+approval updates, and audit events. Firestore is also suitable for the typed org
+context registry because profiles, source policies, Slack preferences, monitoring
+profiles, retrieval resources, proposals, and approved obligation inventory records
+are document-shaped, tenant-scoped, and mostly read by ID. Use
+`VIGIL_STORAGE_BACKEND=firestore` for live storage tests. Keep append-heavy audit
+analytics in mind for BigQuery later if reporting volume outgrows Firestore reads.
+
+### Secrets
+
+Local development can keep direct environment variables. Deployed environments should
+prefer Secret Manager references:
+
+- `SLACK_BOT_TOKEN_SECRET`
+- `SLACK_SIGNING_SECRET_SECRET`
+- `GOOGLE_API_KEY_SECRET`
+
+Each value can be either a full Secret Manager resource such as
+`projects/<project>/secrets/<name>/versions/latest`, a secret resource without a
+version, or a bare secret ID when `GOOGLE_CLOUD_PROJECT` is set. Direct env vars still
+win, so local overrides remain easy.
 
 ### Security And Governance
 
 - Require human approval before remediation actions.
 - Keep least-privilege service accounts for source, retrieval, Slack, ticketing, and audit tools.
 - Use Secret Manager for Slack and third-party credentials.
-- Add audit records for every external action and approval decision.
+- Add audit records for every external action and approval decision. Firestore audit
+  storage is now available through `VIGIL_STORAGE_BACKEND=firestore`.
 - Add Model Armor or policy checks before posting externally visible messages.
 - Add Cloud Trace spans around subagent calls and external tool calls.
 

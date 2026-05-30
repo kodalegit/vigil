@@ -176,6 +176,7 @@ The orchestrator should combine four context layers:
    - Compliance domains.
    - Preferred Slack channels.
    - Reviewer and owner preferences.
+   - Approved enterprise retrieval resources, including RAG corpus, Drive folder, or GCS prefix metadata.
    - Prior false positives.
    - Risk tolerance.
 
@@ -236,11 +237,39 @@ enterprise_search.search_local_corpus
 enterprise_search.search_drive
 enterprise_search.get_artifact
 enterprise_search.get_citation
+enterprise_search.import_drive_to_rag
+enterprise_search.import_gcs_to_rag
 ```
 
 Development should start with local/mock implementations behind interfaces, then replace or augment them with Google Cloud implementations.
 
-### 7.1 Slack Payload Shape
+### 7.1 Retrieval Onboarding
+
+Vigil should treat enterprise retrieval configuration as approved organization context.
+Slack onboarding can capture one of three paths:
+
+1. Existing RAG Engine corpus
+   - Reviewer enters the full corpus resource name.
+   - Vigil stores it as an approved `RetrievalResource`.
+   - Runtime can use `VIGIL_RETRIEVAL_BACKEND=rag_engine` and `VIGIL_RAG_CORPUS`
+     until per-org backend selection is implemented.
+
+2. Google Drive folder
+   - Reviewer enters a Drive folder ID containing pilot policies, SOPs, controls, or inventories.
+   - A controlled ingestion task imports that folder into RAG Engine.
+   - The reviewer verifies citation quality before enabling production monitoring.
+
+3. Cloud Storage prefix
+   - Reviewer enters a `gs://bucket/path` prefix.
+   - A controlled ingestion task imports those files into RAG Engine.
+   - This is the preferred path for curated exports or non-Drive enterprise artifacts.
+
+The approved org context registry records retrieval resource metadata, but source
+evidence and retrieved snippets remain decision/audit artifacts rather than durable
+preferences. Drive and GCS ingestion should be explicit and auditable because those
+connections determine which internal documents Vigil can cite.
+
+### 7.2 Slack Payload Shape
 
 Slack is the front door for the user experience. Alerts should be structured, short, and approval-oriented.
 
@@ -283,7 +312,7 @@ Minimum `slack.post_message` payload:
 
 The Slack message should avoid leaking private document contents into unauthorized channels. The orchestrator should respect enterprise permissions and include links or short excerpts only when allowed. Approval buttons should carry a stable `analysis_id` and recover full decision state from the decision store before applying approval.
 
-### 7.2 Slack Onboarding and Callback Contract
+### 7.3 Slack Onboarding and Callback Contract
 
 Slack is also the first onboarding surface for organization context. The production
 identity model is:
@@ -321,7 +350,7 @@ The "Ask follow-up" action opens a Slack modal that captures the reviewer questi
 or note. Vigil records this as a `follow_up_requested` audit event and leaves the
 decision pending.
 
-### 7.3 Audit Event Schema
+### 7.4 Audit Event Schema
 
 Every material decision or external action should produce an audit event.
 

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +32,51 @@ class Settings(BaseSettings):
     google_application_credentials: str | None = None
     slack_bot_token: str | None = None
     slack_signing_secret: str | None = None
+    slack_bot_token_secret: str | None = None
+    slack_signing_secret_secret: str | None = None
+    google_api_key_secret: str | None = None
+
+    @model_validator(mode="after")
+    def resolve_secret_manager_values(self) -> "Settings":
+        self.slack_bot_token = self.slack_bot_token or _read_secret(
+            self.slack_bot_token_secret,
+            project_id=self.google_cloud_project,
+        )
+        self.slack_signing_secret = self.slack_signing_secret or _read_secret(
+            self.slack_signing_secret_secret,
+            project_id=self.google_cloud_project,
+        )
+        self.google_api_key = self.google_api_key or _read_secret(
+            self.google_api_key_secret,
+            project_id=self.google_cloud_project,
+        )
+        return self
+
+
+def _read_secret(secret_ref: str | None, *, project_id: str | None) -> str | None:
+    if not secret_ref:
+        return None
+    try:
+        from google.cloud import secretmanager
+    except ImportError:
+        return None
+
+    name = _secret_version_name(secret_ref, project_id=project_id)
+    if not name:
+        return None
+    client = secretmanager.SecretManagerServiceClient()
+    response = client.access_secret_version(request={"name": name})
+    return response.payload.data.decode("utf-8")
+
+
+def _secret_version_name(secret_ref: str, *, project_id: str | None) -> str | None:
+    if secret_ref.startswith("projects/"):
+        if "/versions/" in secret_ref:
+            return secret_ref
+        return f"{secret_ref}/versions/latest"
+    if not project_id:
+        return None
+    return f"projects/{project_id}/secrets/{secret_ref}/versions/latest"
 
 
 @lru_cache

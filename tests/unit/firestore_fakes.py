@@ -16,6 +16,12 @@ class FakeFirestoreCollection:
     def document(self, document_id: str):
         return FakeFirestoreDocument(self.documents, document_id)
 
+    def stream(self):
+        return [
+            FakeFirestoreSnapshot(True, value)
+            for value in self.documents.values()
+        ]
+
 
 class FakeFirestoreDocument:
     def __init__(self, documents: dict[str, dict], document_id: str) -> None:

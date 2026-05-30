@@ -206,6 +206,15 @@ def _validate_context(context: OrgContext) -> list[str]:
     for source in context.source_policy.allowlisted_sources:
         if not source.url.startswith(("https://", "http://")):
             errors.append(f"Allowlisted source {source.source_id} must use an HTTP URL.")
+    for resource in context.retrieval_resources:
+        if resource.source_type == "rag_engine" and not resource.rag_corpus:
+            errors.append(f"Retrieval resource {resource.resource_id} requires a RAG corpus.")
+        if resource.source_type == "drive" and not resource.drive_folder_id:
+            errors.append(f"Retrieval resource {resource.resource_id} requires a Drive folder ID.")
+        if resource.source_type == "gcs" and not resource.gcs_uri:
+            errors.append(f"Retrieval resource {resource.resource_id} requires a GCS URI.")
+        if resource.gcs_uri and not resource.gcs_uri.startswith("gs://"):
+            errors.append(f"Retrieval resource {resource.resource_id} GCS URI must start with gs://.")
     return errors
 
 
@@ -263,6 +272,8 @@ def _diff_context(current: OrgContext, proposed: OrgContext) -> list[str]:
         diff.append("Updated Slack preferences.")
     if current.monitoring_profiles != proposed.monitoring_profiles:
         diff.append("Updated monitoring profiles.")
+    if current.retrieval_resources != proposed.retrieval_resources:
+        diff.append("Updated retrieval resources.")
     if current.obligation_inventory != proposed.obligation_inventory:
         diff.append("Updated obligation inventory.")
     return diff or ["No material context changes detected."]

@@ -146,6 +146,14 @@ def test_parse_onboarding_submission_builds_context_updates() -> None:
                         "value": {"value": "EU AI Act high-risk AI deployer obligations"}
                     },
                     "monitoring_cadence": {"value": {"value": "weekly"}},
+                    "retrieval_source_type": {
+                        "value": {"selected_option": {"value": "rag_engine"}}
+                    },
+                    "rag_corpus": {
+                        "value": {
+                            "value": "projects/acme/locations/us-central1/ragCorpora/123"
+                        }
+                    },
                 }
             },
         },
@@ -162,6 +170,10 @@ def test_parse_onboarding_submission_builds_context_updates() -> None:
     assert updates["slack_preferences"]["reviewer_user_ids"] == ["U123", "U456"]
     assert updates["source_policy"]["allowlisted_sources"][0]["source_id"] == "eu-ai-act-briefing"
     assert updates["monitoring_profiles"][0]["enabled"] is True
+    assert updates["retrieval_resources"][0]["source_type"] == "rag_engine"
+    assert updates["retrieval_resources"][0]["rag_corpus"] == (
+        "projects/acme/locations/us-central1/ragCorpora/123"
+    )
 
 
 def test_onboarding_confirmation_blocks_commit_existing_proposal() -> None:

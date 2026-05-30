@@ -244,6 +244,40 @@ def build_onboarding_modal(
                 "EU AI Act high-risk AI deployer obligations",
             ),
             _plain_input("monitoring_cadence", "Monitoring cadence", "weekly"),
+            {
+                "type": "input",
+                "block_id": "retrieval_source_type",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "Enterprise retrieval source"},
+                "element": {
+                    "type": "static_select",
+                    "action_id": "value",
+                    "placeholder": {"type": "plain_text", "text": "Select a source"},
+                    "options": [
+                        _option("rag_engine", "Existing RAG Engine corpus"),
+                        _option("drive", "Google Drive folder"),
+                        _option("gcs", "Cloud Storage prefix"),
+                    ],
+                },
+            },
+            _plain_input(
+                "rag_corpus",
+                "RAG corpus resource",
+                "projects/.../locations/.../ragCorpora/...",
+                optional=True,
+            ),
+            _plain_input(
+                "drive_folder_id",
+                "Drive folder ID",
+                "Folder ID from the Google Drive URL",
+                optional=True,
+            ),
+            _plain_input(
+                "gcs_uri",
+                "Cloud Storage URI",
+                "gs://bucket/path",
+                optional=True,
+            ),
         ],
     }
 
@@ -275,6 +309,10 @@ def parse_onboarding_submission(payload: dict[str, Any]) -> dict[str, Any]:
         "source_regulators": _plain_value(values, "source_regulators"),
         "monitoring_query": _plain_value(values, "monitoring_query"),
         "monitoring_cadence": _plain_value(values, "monitoring_cadence"),
+        "retrieval_source_type": _selected_option(values, "retrieval_source_type"),
+        "rag_corpus": _plain_value(values, "rag_corpus"),
+        "drive_folder_id": _plain_value(values, "drive_folder_id"),
+        "gcs_uri": _plain_value(values, "gcs_uri"),
     }
 
 
@@ -338,6 +376,34 @@ def onboarding_context_updates(submission: dict[str, Any]) -> dict[str, Any]:
                 "cadence": submission.get("monitoring_cadence") or "weekly",
                 "threshold": "medium",
                 "source_ids": [source_id] if source_name and source_url else [],
+                "enabled": True,
+            }
+        ]
+
+    retrieval_source_type = submission.get("retrieval_source_type")
+    rag_corpus = submission.get("rag_corpus")
+    drive_folder_id = submission.get("drive_folder_id")
+    gcs_uri = submission.get("gcs_uri")
+    if retrieval_source_type or rag_corpus or drive_folder_id or gcs_uri:
+        source_type = retrieval_source_type or (
+            "rag_engine" if rag_corpus else "drive" if drive_folder_id else "gcs"
+        )
+        resource_name = (
+            "RAG Engine corpus"
+            if source_type == "rag_engine"
+            else "Google Drive policy folder"
+            if source_type == "drive"
+            else "Cloud Storage policy prefix"
+        )
+        updates["retrieval_resources"] = [
+            {
+                "resource_id": _slug(str(rag_corpus or drive_folder_id or gcs_uri or source_type)),
+                "name": resource_name,
+                "source_type": source_type,
+                "rag_corpus": rag_corpus,
+                "drive_folder_id": drive_folder_id,
+                "gcs_uri": gcs_uri,
+                "refresh_cadence": "manual",
                 "enabled": True,
             }
         ]
@@ -467,10 +533,12 @@ def _plain_input(
     placeholder: str,
     *,
     multiline: bool = False,
+    optional: bool = False,
 ) -> dict[str, Any]:
     return {
         "type": "input",
         "block_id": block_id,
+        "optional": optional,
         "label": {"type": "plain_text", "text": label},
         "element": {
             "type": "plain_text_input",
