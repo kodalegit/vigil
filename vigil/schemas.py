@@ -29,6 +29,7 @@ class MonitoringInstruction(BaseModel):
     domain: str | None = None
     sources: list[str] = Field(default_factory=list)
     source_freshness_days: int | None = None
+    org_context_summary: str | None = None
     suppress_repeated_findings: bool = False
     org_id: str = "default-org"
     user_id: str | None = None
@@ -110,7 +111,7 @@ class OrgProfile(BaseModel):
     sectors: list[str] = Field(default_factory=list)
     products: list[str] = Field(default_factory=list)
     business_model: str | None = None
-    jurisdictions: list[str] = Field(default_factory=lambda: ["European Union"])
+    jurisdictions: list[str] = Field(default_factory=list)
     risk_tolerance: RiskLevel = RiskLevel.medium
 
 
@@ -157,7 +158,7 @@ class SourcePolicy(BaseModel):
 
 
 class SlackPreferences(BaseModel):
-    default_channel: str = "#ai-governance-review"
+    default_channel: str = "#compliance-review"
     reviewer_user_ids: list[str] = Field(default_factory=list)
     notification_windows: list[str] = Field(default_factory=list)
     escalation_rules: list[str] = Field(default_factory=list)

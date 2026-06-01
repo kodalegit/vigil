@@ -72,6 +72,8 @@ def test_slack_payload_is_approval_oriented_and_snippet_limited() -> None:
     payload = build_slack_alert_payload(decision)
 
     assert payload["classification"] == "actionable"
+    assert "EU AI Act" not in payload["title"]
+    assert "obligation may affect enterprise controls" in payload["title"]
     assert payload["approval_required"] is True
     assert payload["approval_status"] == "pending"
     assert "Approve & create ticket" in payload["buttons"]

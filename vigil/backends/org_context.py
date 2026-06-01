@@ -12,7 +12,6 @@ from vigil.schemas import (
     ObligationRegistryEntry,
     ObligationVersion,
     OrgContext,
-    TrustedSource,
 )
 from vigil.settings import Settings, get_settings
 
@@ -199,9 +198,17 @@ def _validate_context(context: OrgContext) -> list[str]:
     errors: list[str] = []
     if not context.profile.org_id:
         errors.append("Org profile requires an org_id.")
-    if not context.profile.jurisdictions:
+    has_monitoring = any(profile.enabled for profile in context.monitoring_profiles)
+    has_sources = bool(context.source_policy.allowlisted_sources)
+    has_profile_details = bool(
+        context.profile.sectors
+        or context.profile.products
+        or context.profile.business_model
+        or context.retrieval_resources
+    )
+    if not context.profile.jurisdictions and (has_monitoring or has_sources or has_profile_details):
         errors.append("Org profile requires at least one jurisdiction.")
-    if context.source_policy.require_allowlist and not context.source_policy.allowlisted_sources:
+    if context.source_policy.require_allowlist and has_monitoring and not has_sources:
         errors.append("Source policy requires at least one allowlisted source.")
     for source in context.source_policy.allowlisted_sources:
         if not source.url.startswith(("https://", "http://")):
@@ -285,45 +292,22 @@ def _default_context(org_id: str) -> OrgContext:
             "profile": {
                 "org_id": org_id,
                 "display_name": "Default Organization",
-                "sectors": ["SaaS"],
-                "products": ["AI governance workflows"],
-                "business_model": "Mid-size SaaS company handling regulated data.",
-                "jurisdictions": ["European Union"],
+                "sectors": [],
+                "products": [],
+                "business_model": None,
+                "jurisdictions": [],
                 "risk_tolerance": "medium",
             },
             "source_policy": {
-                "allowlisted_sources": [
-                    TrustedSource(
-                        source_id="eu-ai-act-briefing",
-                        name="EU AI Act briefing",
-                        url="https://artificialintelligenceact.eu/",
-                        jurisdictions=["European Union"],
-                        domains=["AI governance"],
-                        regulators=["European Union"],
-                        trust_level="trusted",
-                        freshness_days=30,
-                    )
-                ],
+                "allowlisted_sources": [],
                 "require_allowlist": True,
             },
             "slack_preferences": {
-                "default_channel": "#ai-governance-review",
+                "default_channel": "#compliance-review",
                 "reviewer_user_ids": [],
                 "notification_windows": [],
                 "escalation_rules": [],
             },
-            "monitoring_profiles": [
-                {
-                    "profile_id": "eu-ai-act",
-                    "name": "EU AI Act high-risk AI monitoring",
-                    "query": "EU AI Act high-risk AI deployer obligations",
-                    "jurisdictions": ["European Union"],
-                    "domains": ["AI governance"],
-                    "cadence": "weekly",
-                    "threshold": "medium",
-                    "source_ids": ["eu-ai-act-briefing"],
-                    "enabled": True,
-                }
-            ],
+            "monitoring_profiles": [],
         }
     )

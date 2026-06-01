@@ -32,8 +32,8 @@ class ObligationExtractionResult(BaseModel):
 class MockSourceBackend:
     async def search(self, instruction: MonitoringInstruction) -> list[SourceFinding]:
         topic = instruction.query
-        jurisdiction = instruction.jurisdiction or "European Union"
-        domain = instruction.domain or "AI governance"
+        jurisdiction = instruction.jurisdiction or _mock_jurisdiction(topic)
+        domain = instruction.domain or _mock_domain(topic)
         source = instruction.sources[0] if instruction.sources else "mock regulatory source"
         lower_topic = topic.lower()
         if any(term in lower_topic for term in {"maritime", "ballast", "shipping", "vessel"}):
@@ -130,6 +130,21 @@ class MockSourceBackend:
                 ),
             )
         ]
+
+
+def _mock_jurisdiction(topic: str) -> str:
+    if "eu ai act" in topic.lower():
+        return "European Union"
+    return "unspecified"
+
+
+def _mock_domain(topic: str) -> str:
+    lower_topic = topic.lower()
+    if "ai" in lower_topic or "model" in lower_topic:
+        return "AI governance"
+    if any(term in lower_topic for term in {"maritime", "ballast", "shipping", "vessel"}):
+        return "shipping compliance"
+    return "compliance"
 
 
 def _mock_shipping_finding(
@@ -374,9 +389,14 @@ async def _extract_obligations_with_model(
         "legal advice.\n\n"
         f"Monitoring topic: {instruction.query}\n"
         f"Jurisdiction: {instruction.jurisdiction or 'unspecified'}\n"
-        f"Compliance domain: {instruction.domain or 'compliance'}\n\n"
+        f"Compliance domain: {instruction.domain or 'compliance'}\n"
+        "Organization context:\n"
+        f"{instruction.org_context_summary or 'No approved organization context provided.'}\n\n"
         f"Grounded source analysis:\n{grounded_text}\n\n"
         f"Grounding evidence:\n{evidence_block or 'No grounding evidence returned.'}\n\n"
+        "Use the organization context to prioritize obligations that plausibly apply to "
+        "the organization's sectors, products, jurisdictions, monitored domains, and risk "
+        "profile, but never invent or discard obligations solely from organization context. "
         "For each obligation, include a stable id, concise obligation text, jurisdiction, "
         "topics, risk_level, source_url, exact source_quote, and confidence."
     )

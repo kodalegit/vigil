@@ -26,21 +26,46 @@ async def test_context_compiler_applies_registry_defaults_and_source_allowlist()
         )
     )
 
-    assert pack.instruction.jurisdiction == "European Union"
-    assert pack.instruction.domain == "AI governance"
+    assert pack.instruction.jurisdiction is None
+    assert pack.instruction.domain is None
     assert pack.instruction.sources == []
     assert any(item.field == "sources" for item in pack.provenance)
     assert pack.instruction.source_freshness_days is None
+    assert "Organization: Default Organization" in (pack.instruction.org_context_summary or "")
 
 
-async def test_context_compiler_uses_matching_allowlisted_source_when_none_requested() -> None:
-    compiler = ContextCompiler(
-        registry=LocalOrgContextRegistry(),
-        memory=LocalMemoryBackend(),
+async def test_context_compiler_uses_approved_matching_allowlisted_source_when_none_requested() -> None:
+    registry = LocalOrgContextRegistry()
+    proposal = await build_context_update_proposal(
+        registry,
+        org_id="configured-org",
+        summary="Configure EU AI Act monitoring.",
+        updates={
+            "profile": {"jurisdictions": ["European Union"]},
+            "source_policy": {
+                "allowlisted_sources": [
+                    {
+                        "source_id": "eu-ai-act-briefing",
+                        "name": "EU AI Act briefing",
+                        "url": "https://artificialintelligenceact.eu/",
+                        "jurisdictions": ["European Union"],
+                        "domains": ["AI governance"],
+                        "regulators": ["European Union"],
+                        "trust_level": "trusted",
+                        "freshness_days": 30,
+                    }
+                ],
+                "require_allowlist": True,
+            },
+        },
+        approved=True,
     )
+    await registry.commit_proposal(proposal.proposal_id, approved=True)
+    compiler = ContextCompiler(registry=registry, memory=LocalMemoryBackend())
 
     pack = await compiler.compile(
         MonitoringInstruction(
+            org_id="configured-org",
             query="EU AI Act deployer obligations",
             jurisdiction="European Union",
             domain="AI governance",
@@ -49,6 +74,7 @@ async def test_context_compiler_uses_matching_allowlisted_source_when_none_reque
 
     assert pack.instruction.sources == ["https://artificialintelligenceact.eu/"]
     assert pack.instruction.source_freshness_days == 30
+    assert "Jurisdictions: European Union" in (pack.instruction.org_context_summary or "")
     assert any(item.field == "source_freshness_days" for item in pack.provenance)
 
 
@@ -81,7 +107,9 @@ async def test_context_update_proposal_rejects_invalid_required_context() -> Non
             registry,
             org_id="invalid-org",
             summary="Remove required jurisdiction context.",
-            updates={"profile": {"jurisdictions": []}},
+            updates={
+                "profile": {"jurisdictions": [], "sectors": ["financial services"]},
+            },
             approved=True,
         )
 

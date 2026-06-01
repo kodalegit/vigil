@@ -139,8 +139,8 @@ def build_slack_alert_payload(decision: ImpactDecision) -> dict:
         for obligation in finding.obligations
     ][:5]
     return {
-        "channel": decision.slack_channel or "#ai-governance-review",
-        "title": "EU AI Act update may affect AI governance controls",
+        "channel": decision.slack_channel or "#compliance-review",
+        "title": _alert_title(decision),
         "classification": decision.classification,
         "priority": decision.risk_level.value,
         "approval_required": decision.approval_required,
@@ -245,6 +245,27 @@ def build_slack_blocks(payload: dict[str, Any]) -> list[dict[str, Any]]:
         }
     )
     return blocks
+
+
+def _alert_title(decision: ImpactDecision) -> str:
+    obligation = next(
+        (
+            obligation
+            for finding in decision.source_findings
+            for obligation in finding.obligations
+            if obligation.text.strip()
+        ),
+        None,
+    )
+    if obligation:
+        topic = obligation.topics[0] if obligation.topics else "regulatory update"
+        jurisdiction = obligation.jurisdiction
+        return f"{jurisdiction} {topic} obligation may affect enterprise controls"
+    if decision.classification == "ambiguous":
+        return "Regulatory update needs review before action"
+    if decision.classification == "informational":
+        return "Regulatory update recorded with no current enterprise match"
+    return "Regulatory impact review"
 
 
 def _mrkdwn_list(items: list[str]) -> str:

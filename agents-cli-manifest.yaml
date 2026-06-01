@@ -1,5 +1,5 @@
 name: vigil
-description: Autonomous regulatory impact assistant for EU AI Act governance monitoring
+description: Autonomous regulatory impact assistant for enterprise compliance monitoring
 base_template: adk
 agent_directory: vigil
 create_params:

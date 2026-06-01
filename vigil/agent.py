@@ -4,23 +4,23 @@ import google.auth
 import google.auth.exceptions
 from google.adk.agents import Agent
 from google.adk.apps import App
-from google.adk.tools import FunctionTool
 from google.adk.tools import agent_tool
 
 from vigil.agents import VigilOrchestrator
 from vigil.backends import create_backends
 from vigil.backends.org_context import build_context_update_proposal
+from vigil.context import ContextCompiler
 from vigil.schemas import (
     AuditEvent,
     ImpactDecision,
     MemoryTopic,
     MemoryWriteProposal,
     MonitoringInstruction,
+    OrgContext,
     SourceFinding,
     TrustedSource,
 )
 from vigil.settings import get_settings
-
 
 settings = get_settings()
 
@@ -52,15 +52,17 @@ configure_google_model_auth()
 
 def _parse_sources(sources: str | None) -> list[str]:
     if not sources:
-        return ["https://artificialintelligenceact.eu/"]
+        return []
     return [source.strip() for source in sources.split(",") if source.strip()]
 
 
 async def analyze_regulatory_sources(
     query: str,
-    jurisdiction: str = "European Union",
-    domain: str = "AI governance",
+    jurisdiction: str | None = None,
+    domain: str | None = None,
     sources: str | None = None,
+    org_id: str = "default-org",
+    user_id: str | None = None,
 ) -> dict:
     """Extract regulatory changes and obligations from trusted sources.
 
@@ -78,16 +80,34 @@ async def analyze_regulatory_sources(
         jurisdiction=jurisdiction,
         domain=domain,
         sources=_parse_sources(sources),
+        org_id=org_id,
+        user_id=user_id,
     )
-    findings = await create_backends().source.search(instruction)
-    return {"source_findings": [finding.model_dump(mode="json") for finding in findings]}
+    backends = create_backends()
+    assert backends.org_context is not None
+    assert backends.memory is not None
+    context_pack = await ContextCompiler(
+        registry=backends.org_context,
+        memory=backends.memory,
+    ).compile(instruction)
+    findings = await backends.source.search(context_pack.instruction)
+    return {
+        "source_findings": [finding.model_dump(mode="json") for finding in findings],
+        "org_context_summary": context_pack.instruction.org_context_summary,
+        "context_provenance": [
+            item.model_dump(mode="json") for item in context_pack.provenance
+        ],
+    }
 
 
 async def map_enterprise_context(
     query: str,
     source_findings: list[dict] | None = None,
-    jurisdiction: str = "European Union",
-    domain: str = "AI governance",
+    jurisdiction: str | None = None,
+    domain: str | None = None,
+    sources: str | None = None,
+    org_id: str = "default-org",
+    user_id: str | None = None,
 ) -> dict:
     """Map regulatory obligations to internal policies, controls, and SOPs.
 
@@ -104,17 +124,39 @@ async def map_enterprise_context(
         query=query,
         jurisdiction=jurisdiction,
         domain=domain,
-        sources=["https://artificialintelligenceact.eu/"],
+        sources=_parse_sources(sources),
+        org_id=org_id,
+        user_id=user_id,
     )
     parsed_source_findings = _parse_source_finding_dicts(source_findings)
-    findings = await create_backends().retrieval.search(instruction, parsed_source_findings)
-    return {"enterprise_findings": [finding.model_dump(mode="json") for finding in findings]}
+    backends = create_backends()
+    assert backends.org_context is not None
+    assert backends.memory is not None
+    context_pack = await ContextCompiler(
+        registry=backends.org_context,
+        memory=backends.memory,
+    ).compile(instruction)
+    findings = await backends.retrieval.search(
+        context_pack.instruction, parsed_source_findings
+    )
+    return {
+        "enterprise_findings": [
+            finding.model_dump(mode="json") for finding in findings
+        ],
+        "org_context_summary": context_pack.instruction.org_context_summary,
+        "context_provenance": [
+            item.model_dump(mode="json") for item in context_pack.provenance
+        ],
+    }
 
 
 async def run_regulatory_impact_analysis(
     query: str,
-    jurisdiction: str = "European Union",
-    domain: str = "AI governance",
+    jurisdiction: str | None = None,
+    domain: str | None = None,
+    sources: str | None = None,
+    org_id: str = "default-org",
+    user_id: str | None = None,
 ) -> dict:
     """Run Vigil's local regulatory impact loop.
 
@@ -131,7 +173,9 @@ async def run_regulatory_impact_analysis(
         query=query,
         jurisdiction=jurisdiction,
         domain=domain,
-        sources=["https://artificialintelligenceact.eu/"],
+        sources=_parse_sources(sources),
+        org_id=org_id,
+        user_id=user_id,
     )
     decision = await VigilOrchestrator().analyze(instruction)
     return decision.model_dump(mode="json")
@@ -177,7 +221,10 @@ async def get_current_profile(org_id: str = "default-org") -> dict:
     backends = create_backends()
     assert backends.org_context is not None
     context = await backends.org_context.get_context(org_id)
-    return {"org_context": context.model_dump(mode="json")}
+    return {
+        "org_context": context.model_dump(mode="json"),
+        "onboarding_status": _onboarding_status(context),
+    }
 
 
 async def propose_context_update(
@@ -197,6 +244,13 @@ async def propose_context_update(
     source_jurisdictions: str | None = None,
     source_domains: str | None = None,
     source_regulators: str | None = None,
+    source_freshness_days: int | None = None,
+    monitoring_query: str | None = None,
+    monitoring_cadence: str | None = None,
+    retrieval_source_type: str | None = None,
+    rag_corpus: str | None = None,
+    drive_folder_id: str | None = None,
+    gcs_uri: str | None = None,
     memory_text: str | None = None,
     memory_topic: str = "other",
     approved: bool = False,
@@ -220,6 +274,13 @@ async def propose_context_update(
         source_jurisdictions: Optional comma-separated source jurisdictions.
         source_domains: Optional comma-separated source domains.
         source_regulators: Optional comma-separated source regulators.
+        source_freshness_days: Optional freshness window for this source.
+        monitoring_query: Optional first recurring monitoring query.
+        monitoring_cadence: Optional monitoring cadence such as daily, weekly, or monthly.
+        retrieval_source_type: Optional rag_engine, drive, or gcs retrieval resource type.
+        rag_corpus: Optional RAG Engine corpus resource name.
+        drive_folder_id: Optional Google Drive folder ID.
+        gcs_uri: Optional Cloud Storage URI.
         memory_text: Optional approved-memory draft to write only after commit.
         memory_topic: Memory topic for the optional memory draft.
         approved: Whether the human has explicitly approved this proposal.
@@ -267,13 +328,41 @@ async def propose_context_update(
             domains=_parse_csv(source_domains),
             regulators=_parse_csv(source_regulators),
             trust_level="trusted",
+            freshness_days=source_freshness_days,
         )
         source_policy = current.source_policy.model_copy(deep=True)
-        sources = [item for item in source_policy.allowlisted_sources if item.url != source.url]
+        sources = [
+            item for item in source_policy.allowlisted_sources if item.url != source.url
+        ]
         sources.append(source)
         updates["source_policy"] = {
             "allowlisted_sources": [item.model_dump(mode="python") for item in sources]
         }
+
+    if monitoring_query:
+        source_id = _slug(source_name) if source_name else ""
+        updates["monitoring_profiles"] = [
+            {
+                "profile_id": _slug(monitoring_query)[:64] or "default-monitoring",
+                "name": monitoring_query,
+                "query": monitoring_query,
+                "jurisdictions": _parse_csv(jurisdictions),
+                "domains": _parse_csv(source_domains),
+                "cadence": monitoring_cadence or "weekly",
+                "threshold": "medium",
+                "source_ids": [source_id] if source_id else [],
+                "enabled": True,
+            }
+        ]
+
+    retrieval_updates = _retrieval_resource_updates(
+        retrieval_source_type=retrieval_source_type,
+        rag_corpus=rag_corpus,
+        drive_folder_id=drive_folder_id,
+        gcs_uri=gcs_uri,
+    )
+    if retrieval_updates:
+        updates["retrieval_resources"] = retrieval_updates
 
     memory_writes = []
     if memory_text:
@@ -324,7 +413,9 @@ async def validate_context_update(proposal_id: str) -> dict:
     return {"valid": not errors, "errors": errors, "proposal_id": proposal_id}
 
 
-async def commit_approved_context_update(proposal_id: str, approved: bool = False) -> dict:
+async def commit_approved_context_update(
+    proposal_id: str, approved: bool = False
+) -> dict:
     """Commit a human-approved org context proposal and its approved memories.
 
     Args:
@@ -354,7 +445,9 @@ async def commit_approved_context_update(proposal_id: str, approved: bool = Fals
             if approved and not memory_proposal.approved:
                 memory_proposal = memory_proposal.model_copy(update={"approved": True})
             memories.append(
-                (await backends.memory.write_approved(memory_proposal)).model_dump(mode="json")
+                (await backends.memory.write_approved(memory_proposal)).model_dump(
+                    mode="json"
+                )
             )
         await backends.audit.record(
             AuditEvent(
@@ -438,7 +531,9 @@ async def write_approved_memory(
     return {"memory": memory.model_dump(mode="json")}
 
 
-def _parse_source_finding_dicts(source_findings: list[dict] | None) -> list[SourceFinding]:
+def _parse_source_finding_dicts(
+    source_findings: list[dict] | None,
+) -> list[SourceFinding]:
     parsed: list[SourceFinding] = []
     for item in source_findings or []:
         if "source_findings" in item and isinstance(item["source_findings"], list):
@@ -457,6 +552,43 @@ def _parse_csv(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _retrieval_resource_updates(
+    *,
+    retrieval_source_type: str | None,
+    rag_corpus: str | None,
+    drive_folder_id: str | None,
+    gcs_uri: str | None,
+) -> list[dict]:
+    if not any([retrieval_source_type, rag_corpus, drive_folder_id, gcs_uri]):
+        return []
+    source_type = retrieval_source_type or (
+        "rag_engine" if rag_corpus else "drive" if drive_folder_id else "gcs"
+    )
+    name = (
+        "RAG Engine corpus"
+        if source_type == "rag_engine"
+        else (
+            "Google Drive policy folder"
+            if source_type == "drive"
+            else "Cloud Storage policy prefix"
+        )
+    )
+    return [
+        {
+            "resource_id": _slug(
+                str(rag_corpus or drive_folder_id or gcs_uri or source_type)
+            ),
+            "name": name,
+            "source_type": source_type,
+            "rag_corpus": rag_corpus,
+            "drive_folder_id": drive_folder_id,
+            "gcs_uri": gcs_uri,
+            "refresh_cadence": "manual",
+            "enabled": True,
+        }
+    ]
+
+
 def _memory_topic(value: str) -> MemoryTopic:
     if value == "source_policy":
         return "source_policy"
@@ -473,6 +605,37 @@ def _memory_topic(value: str) -> MemoryTopic:
 
 def _slug(value: str) -> str:
     return "-".join(part for part in value.lower().replace("/", " ").split() if part)
+
+
+def _onboarding_status(context: OrgContext) -> dict:
+    missing: list[str] = []
+    if not context.profile.jurisdictions:
+        missing.append("profile.jurisdictions")
+    if not context.source_policy.allowlisted_sources:
+        missing.append("source_policy.allowlisted_sources")
+    if not any(profile.enabled for profile in context.monitoring_profiles):
+        missing.append("monitoring_profiles")
+    if not context.slack_preferences.default_channel:
+        missing.append("slack_preferences.default_channel")
+
+    optional_missing: list[str] = []
+    if not context.profile.sectors and not context.profile.products:
+        optional_missing.append("profile.sectors_or_products")
+    if not any(resource.enabled for resource in context.retrieval_resources):
+        optional_missing.append("retrieval_resources")
+    if not context.slack_preferences.reviewer_user_ids:
+        optional_missing.append("slack_preferences.reviewer_user_ids")
+
+    return {
+        "is_configured_for_monitoring": not missing,
+        "missing_required_fields": missing,
+        "missing_optional_fields": optional_missing,
+        "recommended_next_action": (
+            "Draft and review an organization context update before production monitoring."
+            if missing
+            else "Profile is ready for monitored analysis; review optional fields for production hardening."
+        ),
+    }
 
 
 source_monitoring_agent = Agent(
@@ -512,31 +675,22 @@ root_agent = Agent(
     name="vigil_orchestrator",
     model=settings.vigil_model,
     instruction=(
-        "You are Vigil, an autonomous regulatory impact assistant for lean legal and "
-        "compliance teams at mid-size SaaS companies. Your flagship local demo is EU AI "
-        "Act governance impact analysis. Use hierarchical task decomposition: first "
-        "call source_monitoring_agent to extract regulatory changes and obligations, "
-        "then call enterprise_context_agent to map those obligations to internal "
-        "artifacts. You own the final synthesis, impact classification, recommended "
-        "actions, approval status, and audit narrative. Do not present legal advice "
-        "as final counsel. Require human approval before remediation ticket creation. "
-        "When a reviewer approves or rejects an actionable decision, call "
-        "approve_impact_decision with the pending decision and reviewer identity. "
-        "For onboarding or context refinement, inspect the current profile, draft a "
-        "context update proposal, show the diff, validate it, and commit it only after "
-        "explicit human approval. Durable memories are advisory and must only be written "
-        "from approved context or approved reviewer preferences."
+        "You are Vigil, an autonomous regulatory impact assistant for enterprise legal, "
+        "risk, compliance, and governance teams across regulated domains. Adapt to the "
+        "organization's approved context, jurisdictions, source allowlists, monitored "
+        "domains, retrieval resources, and reviewer preferences instead of assuming a "
+        "specific law, industry, or geography. Approved organization context is compiled "
+        "into the specialist tool calls and returned in their results, including profile, "
+        "source policy, monitoring scope, and retrieval context. Your job is to run the "
+        "core monitoring and reconciliation loop: call source_monitoring_agent to extract "
+        "regulatory changes and obligations, call enterprise_context_agent to map those "
+        "obligations to internal artifacts, then synthesize the final user-facing answer "
+        "with citations, uncertainty, impact classification, and recommended next steps. "
+        "Do not present legal advice as final counsel. "
     ),
     tools=[
         agent_tool.AgentTool(agent=source_monitoring_agent),
         agent_tool.AgentTool(agent=enterprise_context_agent),
-        FunctionTool(func=approve_impact_decision),
-        FunctionTool(func=get_current_profile),
-        FunctionTool(func=propose_context_update),
-        FunctionTool(func=validate_context_update),
-        FunctionTool(func=commit_approved_context_update),
-        FunctionTool(func=search_org_memory),
-        FunctionTool(func=write_approved_memory),
     ],
 )
 

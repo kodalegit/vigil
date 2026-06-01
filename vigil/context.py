@@ -120,10 +120,51 @@ def _apply_registry_defaults(
                 "domain": domain,
                 "sources": sources,
                 "source_freshness_days": source_freshness_days,
+                "org_context_summary": instruction.org_context_summary
+                or build_org_context_summary(org_context),
             }
         ),
         provenance,
     )
+
+
+def build_org_context_summary(org_context: OrgContext) -> str:
+    profile = org_context.profile
+    parts = [
+        f"Organization: {profile.display_name or profile.org_id}",
+        f"Jurisdictions: {_join(profile.jurisdictions)}",
+        f"Sectors: {_join(profile.sectors)}",
+        f"Products or systems: {_join(profile.products)}",
+        f"Business model: {profile.business_model or 'unspecified'}",
+        f"Risk tolerance: {profile.risk_tolerance.value}",
+    ]
+    enabled_profiles = [profile for profile in org_context.monitoring_profiles if profile.enabled]
+    if enabled_profiles:
+        parts.append(
+            "Monitoring profiles: "
+            + "; ".join(
+                f"{profile.name} ({_join(profile.jurisdictions)}, {_join(profile.domains)})"
+                for profile in enabled_profiles[:5]
+            )
+        )
+    if org_context.source_policy.allowlisted_sources:
+        parts.append(
+            "Trusted source domains: "
+            + _join(
+                sorted(
+                    {
+                        domain
+                        for source in org_context.source_policy.allowlisted_sources
+                        for domain in source.domains
+                    }
+                )
+            )
+        )
+    return "\n".join(parts)
+
+
+def _join(values: list[str]) -> str:
+    return ", ".join(values) if values else "unspecified"
 
 
 def _effective_sources(

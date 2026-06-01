@@ -308,3 +308,64 @@ async def test_extract_obligations_falls_back_when_model_raises() -> None:
     assert extraction.obligations
     assert extraction.confidence == 0.45
     assert "fallback" in (extraction.uncertainty or "")
+
+
+async def test_extract_obligations_includes_org_context_in_model_prompt() -> None:
+    class CapturingModels:
+        def __init__(self) -> None:
+            self.contents = ""
+
+        async def generate_content(self, **kwargs):  # noqa: ANN003
+            self.contents = kwargs["contents"]
+            return SimpleNamespace(
+                text="""
+                {
+                  "summary": "Privacy duties apply.",
+                  "confidence": 0.8,
+                  "obligations": [
+                    {
+                      "id": "obl-privacy-notice",
+                      "text": "Maintain privacy notices for covered customer data uses.",
+                      "jurisdiction": "United States",
+                      "topics": ["privacy"],
+                      "risk_level": "medium",
+                      "source_quote": "Covered businesses must disclose customer data uses.",
+                      "confidence": "high"
+                    }
+                  ]
+                }
+                """
+            )
+
+    models = CapturingModels()
+    client = SimpleNamespace(aio=SimpleNamespace(models=models))
+    settings = SimpleNamespace(vigil_model="gemini-2.5-flash")
+
+    extraction = await _extract_obligations_with_model(
+        client=client,
+        settings=settings,
+        instruction=MonitoringInstruction(
+            query="customer data privacy update",
+            jurisdiction="United States",
+            domain="privacy",
+            org_context_summary=(
+                "Organization: Example Financial Group\n"
+                "Sectors: financial services\n"
+                "Products or systems: credit decisioning"
+            ),
+        ),
+        grounded_text="Covered businesses must disclose customer data uses.",
+        evidence=[
+            SourceEvidence(
+                title="Official privacy source",
+                url="https://official.example/privacy",
+                snippet="Covered businesses must disclose customer data uses.",
+            )
+        ],
+    )
+
+    assert extraction.obligations
+    assert "Organization context:" in models.contents
+    assert "Example Financial Group" in models.contents
+    assert "credit decisioning" in models.contents
+    assert "never invent or discard obligations solely from organization context" in models.contents

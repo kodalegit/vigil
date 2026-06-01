@@ -37,10 +37,11 @@ def test_orchestrator_uses_agent_tool_specialists() -> None:
     assert "run_regulatory_impact_analysis" not in tool_names
 
 
-def test_context_and_memory_tools_are_exposed_on_root_agent() -> None:
+def test_root_agent_only_exposes_core_monitoring_tools() -> None:
     tool_names = {getattr(tool, "name", "") for tool in root_agent.tools}
 
-    assert {
+    assert tool_names == {"source_monitoring_agent", "enterprise_context_agent"}
+    assert not {
         "get_current_profile",
         "approve_impact_decision",
         "propose_context_update",
@@ -48,7 +49,20 @@ def test_context_and_memory_tools_are_exposed_on_root_agent() -> None:
         "commit_approved_context_update",
         "search_org_memory",
         "write_approved_memory",
-    }.issubset(tool_names)
+    } & tool_names
+
+
+def test_root_agent_instruction_matches_actual_orchestration_boundary() -> None:
+    instruction = root_agent.instruction
+
+    assert "source_monitoring_agent" in instruction
+    assert "enterprise_context_agent" in instruction
+    assert "core monitoring and reconciliation loop" in instruction
+    assert "Do not create tickets, write memory" in instruction
+    assert "application handlers" in instruction
+    assert "get_current_profile" not in instruction
+    assert "context update proposal" not in instruction
+    assert "Python VigilOrchestrator service" not in instruction
 
 
 async def test_specialist_tools_return_structured_context() -> None:
@@ -61,7 +75,10 @@ async def test_specialist_tools_return_structured_context() -> None:
     )
 
     assert source_result["source_findings"]
+    assert source_result["org_context_summary"]
+    assert "Organization:" in source_result["org_context_summary"]
     assert enterprise_result["enterprise_findings"]
+    assert enterprise_result["org_context_summary"]
     finding = enterprise_result["enterprise_findings"][0]
     assert finding["chunks"]
     assert finding["mappings"]
@@ -163,3 +180,55 @@ async def test_context_tools_require_approval_before_commit_and_memory_write() -
     assert profile["org_context"]["slack_preferences"]["default_channel"] == "#legal-review"
     assert approved_commit["memories_written"]
     assert memories["memories"]
+
+
+async def test_profile_tool_reports_incomplete_onboarding_for_new_org() -> None:
+    profile = await get_current_profile(org_id="new-onboarding-org")
+
+    status = profile["onboarding_status"]
+    assert status["is_configured_for_monitoring"] is False
+    assert "profile.jurisdictions" in status["missing_required_fields"]
+    assert "source_policy.allowlisted_sources" in status["missing_required_fields"]
+    assert "monitoring_profiles" in status["missing_required_fields"]
+
+
+async def test_context_tool_can_onboard_monitoring_and_retrieval_resources() -> None:
+    org_id = "integration-onboarding-resource-org"
+    proposal_result = await propose_context_update(
+        org_id=org_id,
+        requested_by="reviewer-1",
+        summary="Configure production monitoring context.",
+        display_name="Example Financial Group",
+        sectors="financial services",
+        products="credit decisioning",
+        business_model="Regulated lender using automated decision support.",
+        jurisdictions="United States",
+        slack_channel="#compliance-review",
+        source_name="Primary regulator updates",
+        source_url="https://www.regulator.example/updates",
+        source_jurisdictions="United States",
+        source_domains="financial compliance",
+        source_regulators="Primary regulator",
+        source_freshness_days=14,
+        monitoring_query="New lending compliance obligations",
+        monitoring_cadence="weekly",
+        retrieval_source_type="rag_engine",
+        rag_corpus="projects/example/locations/us-central1/ragCorpora/123",
+        approved=False,
+    )
+    proposal = proposal_result["proposal"]
+
+    validation = await validate_context_update(proposal["proposal_id"])
+    approved_commit = await commit_approved_context_update(
+        proposal["proposal_id"],
+        approved=True,
+    )
+    profile = await get_current_profile(org_id=org_id)
+
+    assert validation["valid"] is True
+    assert approved_commit["committed"] is True
+    context = profile["org_context"]
+    assert context["monitoring_profiles"][0]["query"] == "New lending compliance obligations"
+    assert context["retrieval_resources"][0]["source_type"] == "rag_engine"
+    assert context["source_policy"]["allowlisted_sources"][0]["freshness_days"] == 14
+    assert profile["onboarding_status"]["is_configured_for_monitoring"] is True
