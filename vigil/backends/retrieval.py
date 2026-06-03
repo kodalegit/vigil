@@ -41,8 +41,9 @@ class LocalRetrievalBackend:
         metadata_filters: dict[str, Any] | None = None,
     ) -> list[EnterpriseFinding]:
         chunks = self._load_chunks()
-        filters = _metadata_filters(instruction, metadata_filters)
+        filters = _metadata_filters(instruction, source_findings, metadata_filters)
         chunks = _filter_chunks(chunks, filters)
+        chunks = _filter_domain_mismatched_chunks(chunks, instruction, source_findings)
         queries = _retrieval_queries(instruction, source_findings)
         ranked_chunks = self._rank_chunks(chunks, queries)[: self.top_k]
         if not ranked_chunks:
@@ -122,8 +123,6 @@ class LocalRetrievalBackend:
 class RagEngineRetrievalBackend:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
-        if not self.settings.vigil_rag_corpus:
-            raise ValueError("VIGIL_RAG_CORPUS must be set for the RAG Engine backend.")
 
     async def search(
         self,
@@ -139,9 +138,10 @@ class RagEngineRetrievalBackend:
             project=self.settings.google_cloud_project,
             location=self.settings.google_cloud_location,
         )
+        rag_corpus = _effective_rag_corpus(instruction, self.settings)
         query = " ".join(_retrieval_queries(instruction, source_findings))
         response = rag.retrieval_query(
-            rag_resources=[rag.RagResource(rag_corpus=self.settings.vigil_rag_corpus)],
+            rag_resources=[rag.RagResource(rag_corpus=rag_corpus)],
             text=query,
             rag_retrieval_config=rag.RagRetrievalConfig(
                 top_k=self.settings.vigil_retrieval_top_k,
@@ -151,7 +151,11 @@ class RagEngineRetrievalBackend:
             ),
         )
         chunks = _rag_response_to_chunks(response)
-        chunks = _filter_chunks(chunks, _metadata_filters(instruction, metadata_filters))
+        chunks = _filter_chunks(
+            chunks,
+            _metadata_filters(instruction, source_findings, metadata_filters),
+        )
+        chunks = _filter_domain_mismatched_chunks(chunks, instruction, source_findings)
         if not chunks:
             return []
         documents = _unique_documents(chunks)
@@ -174,6 +178,19 @@ class RagEngineRetrievalBackend:
         ]
 
 
+def _effective_rag_corpus(
+    instruction: MonitoringInstruction,
+    settings: Settings,
+) -> str:
+    rag_corpus = instruction.rag_corpus or settings.vigil_rag_corpus
+    if not rag_corpus:
+        raise ValueError(
+            "RAG Engine retrieval requires an approved org retrieval resource "
+            "or VIGIL_RAG_CORPUS."
+        )
+    return rag_corpus
+
+
 def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     if not text.startswith("---"):
         return {}, text
@@ -189,12 +206,35 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
 
 def _metadata_filters(
     instruction: MonitoringInstruction,
+    source_findings: list[SourceFinding] | None,
     explicit_filters: dict[str, Any] | None,
 ) -> dict[str, Any]:
     filters = dict(explicit_filters or {})
     if instruction.jurisdiction:
         filters.setdefault("jurisdiction", instruction.jurisdiction)
+    domain = instruction.domain or _domain_from_source_findings(source_findings or [])
+    if domain:
+        filters.setdefault("domain", domain)
     return filters
+
+
+def _domain_from_source_findings(source_findings: list[SourceFinding]) -> str | None:
+    ignored_topics = {
+        "audit",
+        "compliance",
+        "controls",
+        "evidence retention",
+        "incident reporting",
+        "monitoring",
+        "records",
+    }
+    for finding in source_findings:
+        for obligation in finding.obligations:
+            for topic in obligation.topics:
+                normalized = topic.strip()
+                if normalized and normalized.lower() not in ignored_topics:
+                    return normalized
+    return None
 
 
 def _filter_chunks(
@@ -208,6 +248,57 @@ def _filter_chunks(
         for chunk in chunks
         if all(_matches_filter(chunk.document, key, value) for key, value in filters.items())
     ]
+
+
+def _filter_domain_mismatched_chunks(
+    chunks: list[EnterpriseChunk],
+    instruction: MonitoringInstruction,
+    source_findings: list[SourceFinding],
+) -> list[EnterpriseChunk]:
+    domain = (instruction.domain or _domain_from_source_findings(source_findings) or "").lower()
+    if not domain:
+        return chunks
+    if _is_ai_domain(domain) or _is_ai_query(instruction.query, source_findings):
+        return chunks
+    return [chunk for chunk in chunks if not _is_ai_chunk(chunk)]
+
+
+def _is_ai_domain(domain: str) -> bool:
+    return "ai" in domain or "artificial intelligence" in domain or "model" in domain
+
+
+def _is_ai_query(query: str, source_findings: list[SourceFinding]) -> bool:
+    haystack = " ".join(
+        [
+            query,
+            *[
+                obligation.text
+                for finding in source_findings
+                for obligation in finding.obligations
+            ],
+            *[
+                topic
+                for finding in source_findings
+                for obligation in finding.obligations
+                for topic in obligation.topics
+            ],
+        ]
+    ).lower()
+    return _is_ai_domain(haystack)
+
+
+def _is_ai_chunk(chunk: EnterpriseChunk) -> bool:
+    haystack = " ".join(
+        item or ""
+        for item in [
+            chunk.document.title,
+            chunk.document.product,
+            chunk.document.system_class,
+            chunk.document.business_unit,
+            chunk.text[:500],
+        ]
+    ).lower()
+    return _is_ai_domain(haystack)
 
 
 def _matches_filter(document: EnterpriseDocument, key: str, value: Any) -> bool:

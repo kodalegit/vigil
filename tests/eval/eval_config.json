@@ -16,7 +16,7 @@
         {
           "rubricId": "helpfulness",
           "rubricContent": {
-            "textProperty": "The response includes what changed, why it matters, affected internal artifacts, recommended actions, and a human approval requirement."
+            "textProperty": "The response includes what changed, why it matters, affected internal artifacts or explicitly states when none were mapped, recommended review-ready next steps, and does not claim that approvals, tickets, or context mutations have already been performed."
           }
         }
       ]

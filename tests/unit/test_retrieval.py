@@ -1,4 +1,8 @@
-from vigil.backends.retrieval import LocalRetrievalBackend
+from types import SimpleNamespace
+
+import pytest
+
+from vigil.backends.retrieval import LocalRetrievalBackend, _effective_rag_corpus
 from vigil.schemas import MonitoringInstruction, RegulatoryObligation, RiskLevel, SourceFinding
 
 
@@ -91,6 +95,32 @@ async def test_local_retrieval_drops_weak_unrelated_matches() -> None:
     assert findings == []
 
 
+async def test_local_retrieval_does_not_map_privacy_obligations_to_ai_corpus() -> None:
+    source_findings = [
+        SourceFinding(
+            summary="Privacy transfer obligations",
+            obligations=[
+                RegulatoryObligation(
+                    id="obl-privacy-transfer-assessment",
+                    text="Document cross-border customer data transfer assessments.",
+                    jurisdiction="United States",
+                    topics=["privacy", "data transfer"],
+                    risk_level=RiskLevel.high,
+                    source_quote="Document customer data transfer assessments.",
+                    confidence="high",
+                )
+            ],
+        )
+    ]
+
+    findings = await LocalRetrievalBackend(top_k=6).search(
+        MonitoringInstruction(query="customer data transfer assessments"),
+        source_findings,
+    )
+
+    assert findings == []
+
+
 async def test_local_retrieval_mapping_rationale_names_matched_terms() -> None:
     source_findings = [
         SourceFinding(
@@ -117,3 +147,33 @@ async def test_local_retrieval_mapping_rationale_names_matched_terms() -> None:
     assert findings
     assert findings[0].mappings
     assert any("Matches obligation terms" in mapping.reason for mapping in findings[0].mappings)
+
+
+def test_rag_corpus_prefers_instruction_over_global_setting() -> None:
+    settings = SimpleNamespace(vigil_rag_corpus="global-corpus")
+
+    assert (
+        _effective_rag_corpus(
+            MonitoringInstruction(
+                query="privacy notice obligations",
+                rag_corpus="org-approved-corpus",
+            ),
+            settings,
+        )
+        == "org-approved-corpus"
+    )
+
+
+def test_rag_corpus_falls_back_to_global_setting() -> None:
+    settings = SimpleNamespace(vigil_rag_corpus="global-corpus")
+
+    assert _effective_rag_corpus(MonitoringInstruction(query="privacy"), settings) == (
+        "global-corpus"
+    )
+
+
+def test_rag_corpus_requires_instruction_or_global_setting() -> None:
+    settings = SimpleNamespace(vigil_rag_corpus=None)
+
+    with pytest.raises(ValueError, match="approved org retrieval resource"):
+        _effective_rag_corpus(MonitoringInstruction(query="privacy"), settings)

@@ -1,0 +1,152 @@
+{
+  "eval_set_id": "vigil_general_enterprise",
+  "name": "Vigil General Enterprise Evaluation",
+  "description": "Checks that Vigil handles multiple enterprise compliance domains without hardcoded flagship assumptions.",
+  "eval_cases": [
+    {
+      "eval_id": "privacy_cross_border_transfer_assessment",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Analyze whether a new privacy regulator update on cross-border customer data transfer assessments affects our retail loyalty platform policies and vendor contracts."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "source_monitoring_agent"
+              },
+              {
+                "name": "enterprise_context_agent"
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "vigil",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "aml_transaction_monitoring_change",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Review this financial crime compliance update on transaction monitoring thresholds and suspicious activity escalation for a regional payments company."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "source_monitoring_agent"
+              },
+              {
+                "name": "enterprise_context_agent"
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "vigil",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "vendor_risk_security_addendum",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Assess a vendor risk update requiring stronger security addendum evidence and annual third-party assurance review for our procurement and vendor management program."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "source_monitoring_agent"
+              },
+              {
+                "name": "enterprise_context_agent"
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "vigil",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "workplace_safety_incident_reporting",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Analyze a workplace safety regulator bulletin about incident reporting timelines for warehouse operations. Do not assume this is about AI governance."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "source_monitoring_agent"
+              },
+              {
+                "name": "enterprise_context_agent"
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "vigil",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unrelated_low_evidence_no_match",
+      "conversation": [
+        {
+          "user_content": {
+            "parts": [
+              {
+                "text": "Check a general industry newsletter mentioning possible future packaging-label consultation and tell us if it requires action for our internal compliance controls."
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {
+                "name": "source_monitoring_agent"
+              },
+              {
+                "name": "enterprise_context_agent"
+              }
+            ]
+          }
+        }
+      ],
+      "session_input": {
+        "app_name": "vigil",
+        "user_id": "eval_user",
+        "state": {}
+      }
+    }
+  ]
+}

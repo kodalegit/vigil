@@ -1,0 +1,37 @@
+{
+  "criteria": {
+    "rubric_based_final_response_quality_v1": {
+      "threshold": 0.8,
+      "judgeModelOptions": {
+        "judgeModel": "gemini-2.5-flash",
+        "numSamples": 1
+      },
+      "rubrics": [
+        {
+          "rubricId": "domain_adaptability",
+          "rubricContent": {
+            "textProperty": "The response adapts to the user's stated regulatory domain, jurisdiction, and organization context without defaulting to EU AI Act, SaaS, or AI governance assumptions unless they are explicitly requested."
+          }
+        },
+        {
+          "rubricId": "monitoring_reconciliation_workflow",
+          "rubricContent": {
+            "textProperty": "The response follows Vigil's core workflow by distinguishing source obligation evidence from enterprise artifact mapping, then synthesizing impact, uncertainty, and next steps."
+          }
+        },
+        {
+          "rubricId": "evidence_and_uncertainty",
+          "rubricContent": {
+            "textProperty": "The response cites or describes source evidence when available, explains missing or ambiguous evidence, and avoids inventing internal artifacts or obligations."
+          }
+        },
+        {
+          "rubricId": "human_review_boundary",
+          "rubricContent": {
+            "textProperty": "The response frames legal, remediation, or ticketing conclusions as review-ready recommendations and does not claim that approvals, tickets, or context mutations have already been performed."
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import inspect
 import os
 
 import google.auth
@@ -554,7 +555,9 @@ async def generate_memory(
 
     topic_value = _memory_topic(topic)
     if tool_context is not None:
-        await tool_context.add_session_to_memory()
+        result = tool_context.add_session_to_memory()
+        if inspect.isawaitable(result):
+            await result
         return {
             "generated": True,
             "storage": "memory_bank",
@@ -698,11 +701,13 @@ source_monitoring_agent = Agent(
     ),
     instruction=(
         "You are Vigil's source monitoring and obligation extraction subagent. "
-        "For every request, call analyze_regulatory_sources. Approved organization "
-        "context and relevant memories are compiled into the tool request; use them "
-        "as background for prioritization, not as source evidence. Return a compact, "
-        "cited summary of what changed, obligations, source URLs, confidence, and "
-        "remaining uncertainty. Do not map internal enterprise artifacts."
+        "For every request, call analyze_regulatory_sources; do not ask clarifying "
+        "questions before extraction when jurisdiction, domain, or source fields are "
+        "missing. Approved organization context and relevant memories are compiled "
+        "into the tool request; use them as background for prioritization, not as "
+        "source evidence. Return a compact, cited summary of what changed, obligations, "
+        "source URLs, confidence, and remaining uncertainty. Do not map internal "
+        "enterprise artifacts."
     ),
     tools=[analyze_regulatory_sources],
 )
@@ -749,9 +754,10 @@ root_agent = Agent(
         "regulatory scope, reviewer preferences, source-policy preferences, or reusable "
         "obligation summaries. Do not store raw source evidence, one-off findings, "
         "secrets, credentials, personal data beyond reviewer preferences, or unverified "
-        "claims. Do not present legal advice as final counsel. Do not create tickets, "
-        "approve decisions, or commit context updates; Slack and application handlers "
-        "perform those user-action side effects deterministically."
+        "claims. Do not create tickets, approve decisions, reject decisions, or commit "
+        "organization context changes; those action after-effects are handled by "
+        "application handlers after explicit human action. Do not present legal advice "
+        "as final counsel. "
     ),
     tools=[
         PreloadMemoryTool(),

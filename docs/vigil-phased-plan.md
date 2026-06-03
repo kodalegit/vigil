@@ -296,6 +296,7 @@ Implemented:
 - Unit and integration tests for approval-gated ticket creation and idempotency.
 - Basic ADK evalset for the EU AI Act happy path.
 - Retrieval-quality ADK evalset covering unrelated no-match obligations and ambiguous source evidence.
+- General-enterprise ADK evalset covering privacy, AML, vendor risk, workplace safety, and low-evidence scenarios.
 
 Most recent verified commands:
 
@@ -304,6 +305,7 @@ bash -ic 'uv run pytest -s'
 bash -ic 'uv run ruff check vigil tests'
 agents-cli eval run --evalset tests/eval/evalsets/basic.evalset.json --config tests/eval/eval_config.json
 agents-cli eval run --evalset tests/eval/evalsets/retrieval_quality.evalset.json --config tests/eval/retrieval_quality_config.json
+agents-cli eval run --evalset tests/eval/evalsets/general_enterprise.evalset.json --config tests/eval/general_enterprise_config.json
 ```
 
 Latest known result: 54 unit/integration tests and lint pass on ADK 2.1.0. The basic and retrieval-quality ADK evals last passed before the freshness guardrail slice; the most recent rerun hung on the first Vertex model call and was interrupted before producing a result.

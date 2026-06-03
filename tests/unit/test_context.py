@@ -78,6 +78,92 @@ async def test_context_compiler_uses_approved_matching_allowlisted_source_when_n
     assert any(item.field == "source_freshness_days" for item in pack.provenance)
 
 
+async def test_context_compiler_does_not_apply_unmatched_specialized_profile() -> None:
+    registry = LocalOrgContextRegistry()
+    proposal = await build_context_update_proposal(
+        registry,
+        org_id="mixed-domain-org",
+        summary="Configure flagship AI monitoring.",
+        updates={
+            "profile": {"jurisdictions": ["European Union"]},
+            "source_policy": {
+                "allowlisted_sources": [
+                    {
+                        "source_id": "eu-ai-act-briefing",
+                        "name": "EU AI Act briefing",
+                        "url": "https://artificialintelligenceact.eu/",
+                        "jurisdictions": ["European Union"],
+                        "domains": ["AI governance"],
+                        "regulators": ["European Union"],
+                        "trust_level": "trusted",
+                    }
+                ],
+                "require_allowlist": True,
+            },
+            "monitoring_profiles": [
+                {
+                    "profile_id": "eu-ai-act",
+                    "name": "EU AI Act high-risk AI monitoring",
+                    "query": "EU AI Act high-risk AI deployer obligations",
+                    "jurisdictions": ["European Union"],
+                    "domains": ["AI governance"],
+                    "enabled": True,
+                }
+            ],
+        },
+        approved=True,
+    )
+    await registry.commit_proposal(proposal.proposal_id, approved=True)
+    compiler = ContextCompiler(registry=registry, memory=LocalMemoryBackend())
+
+    pack = await compiler.compile(
+        MonitoringInstruction(
+            org_id="mixed-domain-org",
+            query="AML transaction monitoring thresholds for payments",
+        )
+    )
+
+    assert pack.instruction.jurisdiction is None
+    assert pack.instruction.domain is None
+    assert pack.instruction.sources == []
+    assert not any(item.field == "jurisdiction" for item in pack.provenance)
+    assert not any(item.field == "domain" for item in pack.provenance)
+
+
+async def test_context_compiler_applies_approved_rag_corpus_resource() -> None:
+    registry = LocalOrgContextRegistry()
+    proposal = await build_context_update_proposal(
+        registry,
+        org_id="rag-org",
+        summary="Configure approved RAG corpus.",
+        updates={
+            "profile": {"jurisdictions": ["United States"]},
+            "retrieval_resources": [
+                {
+                    "resource_id": "policy-rag",
+                    "name": "Policy RAG corpus",
+                    "source_type": "rag_engine",
+                    "rag_corpus": "projects/acme/locations/us-central1/ragCorpora/123",
+                    "enabled": True,
+                }
+            ],
+        },
+        approved=True,
+    )
+    await registry.commit_proposal(proposal.proposal_id, approved=True)
+    compiler = ContextCompiler(registry=registry, memory=LocalMemoryBackend())
+
+    pack = await compiler.compile(
+        MonitoringInstruction(
+            org_id="rag-org",
+            query="privacy notice obligations",
+        )
+    )
+
+    assert pack.instruction.rag_corpus == "projects/acme/locations/us-central1/ragCorpora/123"
+    assert any(item.field == "rag_corpus" for item in pack.provenance)
+
+
 async def test_local_memory_requires_explicit_approval() -> None:
     memory = LocalMemoryBackend()
     proposal = MemoryWriteProposal(

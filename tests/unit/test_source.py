@@ -62,6 +62,45 @@ async def test_mock_source_backend_returns_ambiguous_for_consultation_query() ->
     assert findings[0].uncertainty
 
 
+async def test_mock_source_backend_returns_domain_specific_general_obligations() -> None:
+    scenarios = [
+        (
+            "customer data cross-border transfer assessments",
+            "obl-privacy-transfer-assessment",
+        ),
+        (
+            "AML transaction monitoring thresholds suspicious activity escalation",
+            "obl-aml-transaction-monitoring",
+        ),
+        (
+            "vendor security addendum annual third-party assurance review",
+            "obl-third-party-assurance",
+        ),
+        (
+            "workplace safety incident reporting timelines for warehouse operations",
+            "obl-workplace-incident-reporting",
+        ),
+    ]
+
+    for query, expected_obligation_id in scenarios:
+        findings = await MockSourceBackend().search(MonitoringInstruction(query=query))
+
+        assert findings[0].obligations
+        assert findings[0].obligations[0].id == expected_obligation_id
+        assert "EU AI Act" not in findings[0].summary
+        assert "high-risk AI" not in findings[0].summary
+
+
+async def test_mock_source_backend_does_not_use_ai_demo_for_unrelated_topics() -> None:
+    findings = await MockSourceBackend().search(
+        MonitoringInstruction(query="new packaging label filing requirement")
+    )
+
+    assert findings[0].obligations == []
+    assert "EU AI Act" not in findings[0].summary
+    assert "domain-specific obligations" in (findings[0].uncertainty or "")
+
+
 def test_parse_obligation_extraction_response_validates_structured_model_output() -> None:
     extraction = _parse_obligation_extraction_response(
         text="""
@@ -277,6 +316,38 @@ def test_fallback_obligation_extraction_is_low_confidence() -> None:
 
     assert extraction.obligations == []
     assert extraction.confidence == 0.2
+
+
+def test_fallback_obligation_extraction_handles_general_enterprise_domains() -> None:
+    extraction = _fallback_obligations_from_grounded_text(
+        text=(
+            "The regulator says covered firms must review customer data cross-border "
+            "transfer disclosures, maintain AML transaction monitoring for suspicious "
+            "activity, obtain vendor security addendum assurance review evidence, and "
+            "report workplace safety incidents within required reporting timelines."
+        ),
+        instruction=MonitoringInstruction(
+            query="general compliance updates",
+            jurisdiction="United States",
+            domain="enterprise compliance",
+        ),
+        source_url="https://official.example/general-update",
+    )
+
+    obligation_ids = {obligation.id for obligation in extraction.obligations}
+    assert "obl-privacy-notice-data-use" in obligation_ids
+    assert "obl-aml-transaction-monitoring" in obligation_ids
+    assert "obl-third-party-assurance" in obligation_ids
+    assert "obl-workplace-incident-reporting" in obligation_ids
+    assert all(
+        obligation.jurisdiction == "United States"
+        for obligation in extraction.obligations
+    )
+    assert all(
+        obligation.source_url == "https://official.example/general-update"
+        for obligation in extraction.obligations
+    )
+    assert extraction.confidence == 0.45
 
 
 async def test_extract_obligations_falls_back_when_model_raises() -> None:

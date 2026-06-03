@@ -11,6 +11,9 @@ agents-cli eval run
 # Run specific evalset
 agents-cli eval run --evalset tests/eval/evalsets/custom.evalset.json
 
+# Run the general enterprise readiness evalset
+agents-cli eval run --evalset tests/eval/evalsets/general_enterprise.evalset.json --config tests/eval/general_enterprise_config.json
+
 # Run all evalsets
 agents-cli eval run --all
 ```
@@ -78,3 +81,9 @@ ADK eval measures:
 - Add cases when you find bugs in production
 
 See [ADK documentation](https://google.github.io/adk-docs/) for advanced evaluation options.
+
+## Included Evalsets
+
+- `basic.evalset.json`: flagship EU AI Act scenario.
+- `retrieval_quality.evalset.json`: ambiguous and no-match retrieval guardrails.
+- `general_enterprise.evalset.json`: privacy, AML, vendor risk, workplace safety, and low-evidence scenarios for domain generalization.

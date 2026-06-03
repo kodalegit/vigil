@@ -36,6 +36,52 @@ class MockSourceBackend:
         domain = instruction.domain or _mock_domain(topic)
         source = instruction.sources[0] if instruction.sources else "mock regulatory source"
         lower_topic = topic.lower()
+        if any(
+            term in lower_topic
+            for term in {
+                "privacy",
+                "personal data",
+                "customer data",
+                "cross-border",
+                "data transfer",
+            }
+        ):
+            return [_mock_privacy_finding(topic, jurisdiction, domain, source)]
+        if any(
+            term in lower_topic
+            for term in {
+                "aml",
+                "anti-money laundering",
+                "transaction monitoring",
+                "suspicious activity",
+                "financial crime",
+            }
+        ):
+            return [_mock_aml_finding(topic, jurisdiction, domain, source)]
+        if any(
+            term in lower_topic
+            for term in {
+                "vendor",
+                "third-party",
+                "third party",
+                "security addendum",
+                "assurance review",
+                "procurement",
+            }
+        ):
+            return [_mock_vendor_risk_finding(topic, jurisdiction, domain, source)]
+        if any(
+            term in lower_topic
+            for term in {
+                "workplace safety",
+                "warehouse",
+                "occupational safety",
+                "injury",
+                "incident reporting timeline",
+                "incident reporting timelines",
+            }
+        ):
+            return [_mock_workplace_safety_finding(topic, jurisdiction, domain, source)]
         if any(term in lower_topic for term in {"maritime", "ballast", "shipping", "vessel"}):
             return [_mock_shipping_finding(topic, jurisdiction, domain, source)]
         if any(term in lower_topic for term in {"consultation", "ambiguous", "rumor", "rumour"}):
@@ -50,6 +96,20 @@ class MockSourceBackend:
                     citations=[],
                     confidence=0.2,
                     uncertainty="No evidence-backed obligations were found in the mock source.",
+                )
+            ]
+        if not _is_explicit_ai_governance_topic(lower_topic):
+            return [
+                SourceFinding(
+                    summary=(
+                        f"Mock source did not find evidence-backed obligations for {topic}. "
+                        "Configure a trusted source or enable Gemini web source search for this domain."
+                    ),
+                    obligations=[],
+                    evidence=[],
+                    citations=[],
+                    confidence=0.2,
+                    uncertainty="No domain-specific obligations were found in the local mock source.",
                 )
             ]
         source_quote = (
@@ -140,11 +200,38 @@ def _mock_jurisdiction(topic: str) -> str:
 
 def _mock_domain(topic: str) -> str:
     lower_topic = topic.lower()
+    if any(
+        term in lower_topic
+        for term in {"privacy", "personal data", "customer data", "data transfer"}
+    ):
+        return "privacy"
+    if any(
+        term in lower_topic
+        for term in {"aml", "transaction monitoring", "financial crime"}
+    ):
+        return "financial crime compliance"
+    if any(term in lower_topic for term in {"vendor", "third-party", "procurement"}):
+        return "vendor risk"
+    if any(term in lower_topic for term in {"workplace safety", "warehouse"}):
+        return "workplace safety"
     if "ai" in lower_topic or "model" in lower_topic:
         return "AI governance"
     if any(term in lower_topic for term in {"maritime", "ballast", "shipping", "vessel"}):
         return "shipping compliance"
     return "compliance"
+
+
+def _is_explicit_ai_governance_topic(lower_topic: str) -> bool:
+    return any(
+        term in lower_topic
+        for term in {
+            "ai",
+            "artificial intelligence",
+            "model",
+            "eu ai act",
+            "high-risk ai",
+        }
+    )
 
 
 def _mock_shipping_finding(
@@ -198,6 +285,245 @@ def _mock_shipping_finding(
             "Local mock source does not verify current legal text; use Gemini web search "
             "or configured official sources before production action."
         ),
+    )
+
+
+def _mock_privacy_finding(
+    topic: str,
+    jurisdiction: str,
+    domain: str,
+    source: str,
+) -> SourceFinding:
+    source_quote = (
+        "Covered businesses must document customer data transfer assessments, update "
+        "privacy notices, and retain vendor transfer review evidence."
+    )
+    return SourceFinding(
+        summary=(
+            f"Potential {domain} update relevant to {topic} in {jurisdiction}. "
+            "The update concerns customer data transfer assessments, privacy notice "
+            "updates, and review evidence."
+        ),
+        obligations=[
+            RegulatoryObligation(
+                id="obl-privacy-transfer-assessment",
+                text=(
+                    "Document cross-border customer data transfer assessments and "
+                    "maintain review evidence."
+                ),
+                section_id="data-transfer-assessments",
+                jurisdiction=jurisdiction,
+                topics=["privacy", "data transfer", domain],
+                risk_level=RiskLevel.high,
+                source_url=source if source.startswith("http") else None,
+                source_quote=source_quote,
+                confidence="high",
+            ),
+            RegulatoryObligation(
+                id="obl-privacy-notice-data-use",
+                text="Update privacy notices for covered customer data uses and transfers.",
+                section_id="privacy-notices",
+                jurisdiction=jurisdiction,
+                topics=["privacy notice", "customer data", domain],
+                risk_level=RiskLevel.medium,
+                source_url=source if source.startswith("http") else None,
+                source_quote=source_quote,
+                confidence="medium",
+            ),
+        ],
+        evidence=[
+            SourceEvidence(
+                title="Mock privacy transfer assessment update",
+                url=source if source.startswith("http") else None,
+                source_type="mock",
+                snippet=source_quote,
+                confidence="medium",
+            )
+        ],
+        citations=[
+            Citation(
+                source=source,
+                title="Mock privacy transfer assessment update",
+                snippet=source_quote,
+                source_type="web" if source.startswith("http") else "other",
+                url=source if source.startswith("http") else None,
+            )
+        ],
+        confidence=0.72,
+        uncertainty="Local mock source does not verify current legal text.",
+    )
+
+
+def _mock_aml_finding(
+    topic: str,
+    jurisdiction: str,
+    domain: str,
+    source: str,
+) -> SourceFinding:
+    source_quote = (
+        "Covered payments firms must maintain transaction monitoring thresholds, "
+        "escalate suspicious activity, and retain investigation records."
+    )
+    return SourceFinding(
+        summary=(
+            f"Potential {domain} update relevant to {topic} in {jurisdiction}. "
+            "The update concerns transaction monitoring, suspicious activity "
+            "escalation, and investigation evidence."
+        ),
+        obligations=[
+            RegulatoryObligation(
+                id="obl-aml-transaction-monitoring",
+                text=(
+                    "Maintain transaction monitoring thresholds and escalate suspicious "
+                    "activity for covered payments activity."
+                ),
+                section_id="transaction-monitoring",
+                jurisdiction=jurisdiction,
+                topics=["aml", "transaction monitoring", domain],
+                risk_level=RiskLevel.high,
+                source_url=source if source.startswith("http") else None,
+                source_quote=source_quote,
+                confidence="high",
+            ),
+            RegulatoryObligation(
+                id="obl-aml-investigation-records",
+                text="Retain suspicious activity investigation records for audit review.",
+                section_id="investigation-records",
+                jurisdiction=jurisdiction,
+                topics=["financial crime", "evidence retention", domain],
+                risk_level=RiskLevel.medium,
+                source_url=source if source.startswith("http") else None,
+                source_quote=source_quote,
+                confidence="medium",
+            ),
+        ],
+        evidence=[
+            SourceEvidence(
+                title="Mock AML transaction monitoring update",
+                url=source if source.startswith("http") else None,
+                source_type="mock",
+                snippet=source_quote,
+                confidence="medium",
+            )
+        ],
+        citations=[
+            Citation(
+                source=source,
+                title="Mock AML transaction monitoring update",
+                snippet=source_quote,
+                source_type="web" if source.startswith("http") else "other",
+                url=source if source.startswith("http") else None,
+            )
+        ],
+        confidence=0.72,
+        uncertainty="Local mock source does not verify current legal text.",
+    )
+
+
+def _mock_vendor_risk_finding(
+    topic: str,
+    jurisdiction: str,
+    domain: str,
+    source: str,
+) -> SourceFinding:
+    source_quote = (
+        "Covered organizations must obtain stronger security addendum evidence from "
+        "critical vendors and complete annual third-party assurance reviews."
+    )
+    return SourceFinding(
+        summary=(
+            f"Potential {domain} update relevant to {topic} in {jurisdiction}. "
+            "The update concerns vendor security addendum evidence and annual "
+            "third-party assurance reviews."
+        ),
+        obligations=[
+            RegulatoryObligation(
+                id="obl-third-party-assurance",
+                text=(
+                    "Obtain vendor security addendum evidence and complete annual "
+                    "third-party assurance reviews for critical vendors."
+                ),
+                section_id="third-party-assurance",
+                jurisdiction=jurisdiction,
+                topics=["vendor risk", "third-party assurance", domain],
+                risk_level=RiskLevel.medium,
+                source_url=source if source.startswith("http") else None,
+                source_quote=source_quote,
+                confidence="high",
+            )
+        ],
+        evidence=[
+            SourceEvidence(
+                title="Mock vendor assurance update",
+                url=source if source.startswith("http") else None,
+                source_type="mock",
+                snippet=source_quote,
+                confidence="medium",
+            )
+        ],
+        citations=[
+            Citation(
+                source=source,
+                title="Mock vendor assurance update",
+                snippet=source_quote,
+                source_type="web" if source.startswith("http") else "other",
+                url=source if source.startswith("http") else None,
+            )
+        ],
+        confidence=0.72,
+        uncertainty="Local mock source does not verify current legal text.",
+    )
+
+
+def _mock_workplace_safety_finding(
+    topic: str,
+    jurisdiction: str,
+    domain: str,
+    source: str,
+) -> SourceFinding:
+    source_quote = (
+        "Warehouse operators must report covered workplace safety incidents within "
+        "required timelines and retain incident investigation evidence."
+    )
+    return SourceFinding(
+        summary=(
+            f"Potential {domain} update relevant to {topic} in {jurisdiction}. "
+            "The update concerns workplace safety incident reporting timelines and "
+            "investigation evidence."
+        ),
+        obligations=[
+            RegulatoryObligation(
+                id="obl-workplace-incident-reporting",
+                text="Report covered workplace safety incidents within required timelines.",
+                section_id="incident-reporting",
+                jurisdiction=jurisdiction,
+                topics=["workplace safety", "incident reporting", domain],
+                risk_level=RiskLevel.high,
+                source_url=source if source.startswith("http") else None,
+                source_quote=source_quote,
+                confidence="high",
+            )
+        ],
+        evidence=[
+            SourceEvidence(
+                title="Mock workplace safety incident reporting update",
+                url=source if source.startswith("http") else None,
+                source_type="mock",
+                snippet=source_quote,
+                confidence="medium",
+            )
+        ],
+        citations=[
+            Citation(
+                source=source,
+                title="Mock workplace safety incident reporting update",
+                snippet=source_quote,
+                source_type="web" if source.startswith("http") else "other",
+                url=source if source.startswith("http") else None,
+            )
+        ],
+        confidence=0.72,
+        uncertainty="Local mock source does not verify current legal text.",
     )
 
 
@@ -582,18 +908,86 @@ def _fallback_obligations_from_grounded_text(
             "Maintain documented human oversight procedures for high-risk AI workflows.",
             ["human oversight", domain],
             ["human oversight", "oversight procedures", "human-in-the-loop"],
+            RiskLevel.high,
         ),
         (
             "obl-monitoring-incidents",
-            "Monitor AI system performance and log incidents that may create material risk.",
+            "Monitor covered systems or processes and escalate incidents that may create material risk.",
             ["monitoring", "incident response", domain],
             ["monitor", "monitoring", "incident", "incident response"],
+            RiskLevel.high,
         ),
         (
             "obl-evidence-retention",
             "Keep technical and compliance evidence available for regulator or auditor review.",
             ["evidence retention", "audit", domain],
             ["evidence retention", "retain", "retention", "audit", "logs"],
+            RiskLevel.medium,
+        ),
+        (
+            "obl-privacy-notice-data-use",
+            "Maintain privacy notices or disclosures for covered personal data uses and transfers.",
+            ["privacy", "data protection", domain],
+            [
+                "privacy notice",
+                "personal data",
+                "customer data",
+                "data transfer",
+                "cross-border",
+                "disclose",
+                "disclosure",
+            ],
+            RiskLevel.high,
+        ),
+        (
+            "obl-aml-transaction-monitoring",
+            "Maintain transaction monitoring and suspicious activity escalation for covered financial activity.",
+            ["financial crime", "aml", "transaction monitoring", domain],
+            [
+                "anti-money laundering",
+                "aml",
+                "transaction monitoring",
+                "suspicious activity",
+                "suspicious transaction",
+                "escalation",
+            ],
+            RiskLevel.high,
+        ),
+        (
+            "obl-third-party-assurance",
+            "Review vendor security assurances and maintain evidence for third-party risk oversight.",
+            ["vendor risk", "third-party risk", "security assurance", domain],
+            [
+                "vendor",
+                "third-party",
+                "third party",
+                "security addendum",
+                "assurance review",
+                "supplier",
+            ],
+            RiskLevel.medium,
+        ),
+        (
+            "obl-workplace-incident-reporting",
+            "Report covered workplace safety incidents within required timelines.",
+            ["workplace safety", "incident reporting", domain],
+            [
+                "workplace safety",
+                "occupational safety",
+                "warehouse",
+                "injury",
+                "incident reporting",
+                "reporting timeline",
+                "reporting timelines",
+            ],
+            RiskLevel.high,
+        ),
+        (
+            "obl-risk-assessment-controls",
+            "Maintain risk assessments and controls for covered activities or systems.",
+            ["risk assessment", "controls", domain],
+            ["risk assessment", "risk assessments", "internal controls", "control testing"],
+            RiskLevel.medium,
         ),
     ]
     obligations = [
@@ -602,12 +996,12 @@ def _fallback_obligations_from_grounded_text(
             text=obligation_text,
             jurisdiction=jurisdiction,
             topics=topics,
-            risk_level=RiskLevel.high,
+            risk_level=risk_level,
             source_url=source_url,
             source_quote=text[:500] or obligation_text,
             confidence="medium",
         )
-        for obligation_id, obligation_text, topics, match_terms in candidates
+        for obligation_id, obligation_text, topics, match_terms, risk_level in candidates
         if any(term in lower_text for term in match_terms)
     ]
     return ObligationExtractionResult(

@@ -82,19 +82,16 @@ class FirestoreAuditBackend:
         event_type: str | None = None,
         metadata: dict[str, str] | None = None,
     ) -> list[AuditEvent]:
-        collection = self.client.collection(self.collection_name)
-        snapshots = collection.stream()
+        query = self.client.collection(self.collection_name)
+        if event_type:
+            query = query.where("event_type", "==", event_type)
+        if metadata:
+            for key, value in metadata.items():
+                query = query.where(f"metadata.{key}", "==", value)
+        snapshots = query.stream()
         events = [
             AuditEvent.model_validate(snapshot.to_dict() or {})
             for snapshot in snapshots
             if snapshot.exists
         ]
-        if event_type:
-            events = [event for event in events if event.event_type == event_type]
-        if metadata:
-            events = [
-                event
-                for event in events
-                if all(event.metadata.get(key) == value for key, value in metadata.items())
-            ]
         return [event.model_copy(deep=True) for event in events]

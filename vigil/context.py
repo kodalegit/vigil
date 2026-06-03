@@ -63,9 +63,10 @@ def _apply_registry_defaults(
     provenance: list[ContextProvenance] = []
     jurisdiction = instruction.jurisdiction
     domain = instruction.domain
+    matched_profile = _matching_monitoring_profile(instruction, org_context)
 
-    if not jurisdiction and org_context.profile.jurisdictions:
-        jurisdiction = org_context.profile.jurisdictions[0]
+    if not jurisdiction and matched_profile and matched_profile.jurisdictions:
+        jurisdiction = matched_profile.jurisdictions[0]
         provenance.append(
             ContextProvenance(
                 field="jurisdiction",
@@ -75,12 +76,8 @@ def _apply_registry_defaults(
         )
 
     if not domain:
-        enabled_profiles = [
-            profile for profile in org_context.monitoring_profiles if profile.enabled
-        ]
-        profile_domains = [profile.domains[0] for profile in enabled_profiles if profile.domains]
-        if profile_domains:
-            domain = profile_domains[0]
+        if matched_profile and matched_profile.domains:
+            domain = matched_profile.domains[0]
             provenance.append(
                 ContextProvenance(
                     field="domain",
@@ -121,6 +118,18 @@ def _apply_registry_defaults(
                 )
             )
 
+    rag_corpus = instruction.rag_corpus
+    if rag_corpus is None:
+        rag_corpus = _effective_rag_corpus(org_context)
+        if rag_corpus is not None:
+            provenance.append(
+                ContextProvenance(
+                    field="rag_corpus",
+                    source="registry",
+                    detail="Applied approved RAG Engine retrieval resource.",
+                )
+            )
+
     return (
         instruction.model_copy(
             update={
@@ -128,6 +137,7 @@ def _apply_registry_defaults(
                 "domain": domain,
                 "sources": sources,
                 "source_freshness_days": source_freshness_days,
+                "rag_corpus": rag_corpus,
                 "org_context_summary": instruction.org_context_summary
                 or build_org_context_summary(org_context, memories),
             }
@@ -202,10 +212,77 @@ def _effective_sources(
             ]
         return [source for source in requested_sources if source_policy.is_allowed(source)]
 
-    allowlisted = source_policy.allowed_urls(jurisdiction=jurisdiction, domain=domain)
-    if allowlisted:
-        return allowlisted
-    return source_policy.allowed_urls()
+    if jurisdiction or domain:
+        return source_policy.allowed_urls(jurisdiction=jurisdiction, domain=domain)
+    return [
+        source.url
+        for source in source_policy.allowlisted_sources
+        if (
+            source.trust_level != "blocked"
+            and source.url not in source_policy.blocked_sources
+            and not source.jurisdictions
+            and not source.domains
+        )
+    ]
+
+
+def _matching_monitoring_profile(
+    instruction: MonitoringInstruction,
+    org_context: OrgContext,
+):
+    query_terms = _keyword_set(instruction.query)
+    for profile in org_context.monitoring_profiles:
+        if not profile.enabled:
+            continue
+        profile_terms = _keyword_set(
+            " ".join(
+                [
+                    profile.name,
+                    profile.query,
+                    " ".join(profile.jurisdictions),
+                    " ".join(profile.domains),
+                ]
+            )
+        )
+        if query_terms & profile_terms:
+            return profile
+    return None
+
+
+def _keyword_set(value: str) -> set[str]:
+    stopwords = {
+        "a",
+        "an",
+        "and",
+        "for",
+        "in",
+        "of",
+        "on",
+        "our",
+        "the",
+        "to",
+        "assessment",
+        "assessments",
+        "compliance",
+        "control",
+        "controls",
+        "deployer",
+        "deployers",
+        "monitoring",
+        "obligation",
+        "obligations",
+        "policy",
+        "regulatory",
+        "threshold",
+        "thresholds",
+        "update",
+        "updates",
+    }
+    return {
+        part
+        for part in value.lower().replace("-", " ").replace("_", " ").split()
+        if len(part) > 2 and part not in stopwords
+    }
 
 
 def _effective_source_freshness_days(
@@ -233,3 +310,10 @@ def _effective_source_freshness_days(
         if source.freshness_days is not None:
             matched_days.append(source.freshness_days)
     return min(matched_days) if matched_days else None
+
+
+def _effective_rag_corpus(org_context: OrgContext) -> str | None:
+    for resource in org_context.retrieval_resources:
+        if resource.enabled and resource.source_type == "rag_engine" and resource.rag_corpus:
+            return resource.rag_corpus
+    return None

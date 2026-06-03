@@ -29,6 +29,7 @@ class MonitoringInstruction(BaseModel):
     domain: str | None = None
     sources: list[str] = Field(default_factory=list)
     source_freshness_days: int | None = None
+    rag_corpus: str | None = None
     org_context_summary: str | None = None
     suppress_repeated_findings: bool = False
     org_id: str = "default-org"
