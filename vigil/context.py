@@ -2,7 +2,13 @@ from typing import Any
 
 from vigil.backends.memory import LocalMemoryBackend, MemoryBackend
 from vigil.backends.org_context import LocalOrgContextRegistry, OrgContextRegistry
-from vigil.schemas import ContextPack, ContextProvenance, MonitoringInstruction, OrgContext
+from vigil.schemas import (
+    ContextPack,
+    ContextProvenance,
+    MemoryRecord,
+    MonitoringInstruction,
+    OrgContext,
+)
 
 
 class ContextCompiler:
@@ -29,6 +35,7 @@ class ContextCompiler:
         effective_instruction, provenance = _apply_registry_defaults(
             instruction,
             org_context,
+            memories,
         )
         if memories:
             provenance.append(
@@ -51,6 +58,7 @@ class ContextCompiler:
 def _apply_registry_defaults(
     instruction: MonitoringInstruction,
     org_context: OrgContext,
+    memories: list[MemoryRecord],
 ) -> tuple[MonitoringInstruction, list[ContextProvenance]]:
     provenance: list[ContextProvenance] = []
     jurisdiction = instruction.jurisdiction
@@ -121,14 +129,17 @@ def _apply_registry_defaults(
                 "sources": sources,
                 "source_freshness_days": source_freshness_days,
                 "org_context_summary": instruction.org_context_summary
-                or build_org_context_summary(org_context),
+                or build_org_context_summary(org_context, memories),
             }
         ),
         provenance,
     )
 
 
-def build_org_context_summary(org_context: OrgContext) -> str:
+def build_org_context_summary(
+    org_context: OrgContext,
+    memories: list[MemoryRecord] | None = None,
+) -> str:
     profile = org_context.profile
     parts = [
         f"Organization: {profile.display_name or profile.org_id}",
@@ -158,6 +169,13 @@ def build_org_context_summary(org_context: OrgContext) -> str:
                         for domain in source.domains
                     }
                 )
+            )
+        )
+    if memories:
+        parts.append(
+            "Relevant approved memories: "
+            + "; ".join(
+                f"{memory.topic}: {memory.text[:220]}" for memory in memories[:5] if memory.text
             )
         )
     return "\n".join(parts)

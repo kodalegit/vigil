@@ -7,6 +7,7 @@ from vigil.agent import (
     app,
     approve_impact_decision,
     commit_approved_context_update,
+    generate_memory,
     get_current_profile,
     map_enterprise_context,
     propose_context_update,
@@ -40,7 +41,13 @@ def test_orchestrator_uses_agent_tool_specialists() -> None:
 def test_root_agent_only_exposes_core_monitoring_tools() -> None:
     tool_names = {getattr(tool, "name", "") for tool in root_agent.tools}
 
-    assert tool_names == {"source_monitoring_agent", "enterprise_context_agent"}
+    assert tool_names == {
+        "preload_memory",
+        "source_monitoring_agent",
+        "enterprise_context_agent",
+        "load_memory",
+        "generate_memory",
+    }
     assert not {
         "get_current_profile",
         "approve_impact_decision",
@@ -58,7 +65,9 @@ def test_root_agent_instruction_matches_actual_orchestration_boundary() -> None:
     assert "source_monitoring_agent" in instruction
     assert "enterprise_context_agent" in instruction
     assert "core monitoring and reconciliation loop" in instruction
-    assert "Do not create tickets, write memory" in instruction
+    assert "Memory Bank may also preload relevant memories" in instruction
+    assert "Use generate_memory only for stable, reusable monitoring preferences" in instruction
+    assert "Do not create tickets" in instruction
     assert "application handlers" in instruction
     assert "get_current_profile" not in instruction
     assert "context update proposal" not in instruction
@@ -232,3 +241,42 @@ async def test_context_tool_can_onboard_monitoring_and_retrieval_resources() -> 
     assert context["retrieval_resources"][0]["source_type"] == "rag_engine"
     assert context["source_policy"]["allowlisted_sources"][0]["freshness_days"] == 14
     assert profile["onboarding_status"]["is_configured_for_monitoring"] is True
+
+
+async def test_generate_memory_tool_uses_local_backend_without_tool_context() -> None:
+    result = await generate_memory(
+        memory_text="Treat duplicate quarterly AI policy reminders as low priority.",
+        topic="false_positive_patterns",
+        org_id="memory-tool-org",
+        rationale="Reviewer marked this pattern as recurring.",
+    )
+    memories = await search_org_memory(
+        org_id="memory-tool-org",
+        query="duplicate quarterly AI policy reminders",
+        topics="false_positive_patterns",
+    )
+
+    assert result["generated"] is True
+    assert result["storage"] == "local_memory_backend"
+    assert memories["memories"]
+
+
+async def test_generate_memory_tool_queues_session_generation_with_tool_context() -> None:
+    class FakeToolContext:
+        def __init__(self) -> None:
+            self.called = False
+
+        def add_session_to_memory(self) -> None:
+            self.called = True
+
+    tool_context = FakeToolContext()
+    result = await generate_memory(
+        memory_text="Reviewer prefers privacy updates batched unless high risk.",
+        topic="notification_preferences",
+        org_id="memory-bank-org",
+        tool_context=tool_context,  # type: ignore[arg-type]
+    )
+
+    assert result["generated"] is True
+    assert result["storage"] == "memory_bank"
+    assert tool_context.called is True

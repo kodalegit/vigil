@@ -4,7 +4,11 @@ import google.auth
 import google.auth.exceptions
 from google.adk.agents import Agent
 from google.adk.apps import App
+from google.adk.tools import FunctionTool
+from google.adk.tools import ToolContext
 from google.adk.tools import agent_tool
+from google.adk.tools.load_memory_tool import LoadMemoryTool
+from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 
 from vigil.agents import VigilOrchestrator
 from vigil.backends import create_backends
@@ -531,6 +535,53 @@ async def write_approved_memory(
     return {"memory": memory.model_dump(mode="json")}
 
 
+async def generate_memory(
+    memory_text: str,
+    topic: str = "other",
+    org_id: str = "default-org",
+    rationale: str | None = None,
+    tool_context: ToolContext | None = None,
+) -> dict:
+    """Generate a durable advisory memory for reusable monitoring context.
+
+    Use this only for stable, recurring facts or preferences that should influence
+    future regulatory monitoring and reconciliation. Do not store raw evidence,
+    one-off source findings, secrets, credentials, or unverified claims.
+    """
+    text = memory_text.strip()
+    if not text:
+        return {"generated": False, "message": "Memory text is required."}
+
+    topic_value = _memory_topic(topic)
+    if tool_context is not None:
+        await tool_context.add_session_to_memory()
+        return {
+            "generated": True,
+            "storage": "memory_bank",
+            "topic": topic_value,
+            "message": (
+                "Queued the current session for Memory Bank generation. "
+                "The memory text is a generation hint, not a direct memory write."
+            ),
+        }
+
+    backends = create_backends()
+    assert backends.memory is not None
+    memory = await backends.memory.write_approved(
+        MemoryWriteProposal(
+            topic=topic_value,
+            text=text,
+            org_id=org_id,
+            approved=True,
+        )
+    )
+    return {
+        "generated": True,
+        "storage": "local_memory_backend",
+        "memory": memory.model_dump(mode="json"),
+    }
+
+
 def _parse_source_finding_dicts(
     source_findings: list[dict] | None,
 ) -> list[SourceFinding]:
@@ -647,7 +698,9 @@ source_monitoring_agent = Agent(
     ),
     instruction=(
         "You are Vigil's source monitoring and obligation extraction subagent. "
-        "For every request, call analyze_regulatory_sources. Return a compact, "
+        "For every request, call analyze_regulatory_sources. Approved organization "
+        "context and relevant memories are compiled into the tool request; use them "
+        "as background for prioritization, not as source evidence. Return a compact, "
         "cited summary of what changed, obligations, source URLs, confidence, and "
         "remaining uncertainty. Do not map internal enterprise artifacts."
     ),
@@ -664,9 +717,11 @@ enterprise_context_agent = Agent(
     instruction=(
         "You are Vigil's enterprise context mapping subagent. For every request, "
         "call map_enterprise_context using the regulatory topic and any obligation "
-        "evidence provided by the orchestrator. Return affected artifacts, snippets, "
-        "citations, confidence, and mapping rationale. Do not make the final risk or "
-        "approval decision."
+        "evidence provided by the orchestrator. Approved organization context and "
+        "relevant memories are compiled into the tool request; use them as background "
+        "for retrieval and mapping, not as replacement evidence. Return affected "
+        "artifacts, snippets, citations, confidence, and mapping rationale. Do not "
+        "make the final risk or approval decision."
     ),
     tools=[map_enterprise_context],
 )
@@ -681,16 +736,29 @@ root_agent = Agent(
         "domains, retrieval resources, and reviewer preferences instead of assuming a "
         "specific law, industry, or geography. Approved organization context is compiled "
         "into the specialist tool calls and returned in their results, including profile, "
-        "source policy, monitoring scope, and retrieval context. Your job is to run the "
-        "core monitoring and reconciliation loop: call source_monitoring_agent to extract "
-        "regulatory changes and obligations, call enterprise_context_agent to map those "
-        "obligations to internal artifacts, then synthesize the final user-facing answer "
-        "with citations, uncertainty, impact classification, and recommended next steps. "
-        "Do not present legal advice as final counsel. "
+        "source policy, monitoring scope, retrieval context, and relevant memories. "
+        "Memory Bank may also preload relevant memories into your prompt; treat memories "
+        "as advisory background, never as legal or source evidence. Your job is to run "
+        "the core monitoring and reconciliation loop: call source_monitoring_agent to "
+        "extract regulatory changes and obligations, call enterprise_context_agent to "
+        "map those obligations to internal artifacts, then synthesize the final "
+        "user-facing answer with citations, uncertainty, impact classification, and "
+        "recommended next steps. Use load_memory only when you need more memory context "
+        "than was preloaded. Use generate_memory only for stable, reusable monitoring "
+        "preferences or lessons, such as approved false-positive patterns, recurring "
+        "regulatory scope, reviewer preferences, source-policy preferences, or reusable "
+        "obligation summaries. Do not store raw source evidence, one-off findings, "
+        "secrets, credentials, personal data beyond reviewer preferences, or unverified "
+        "claims. Do not present legal advice as final counsel. Do not create tickets, "
+        "approve decisions, or commit context updates; Slack and application handlers "
+        "perform those user-action side effects deterministically."
     ),
     tools=[
+        PreloadMemoryTool(),
         agent_tool.AgentTool(agent=source_monitoring_agent),
         agent_tool.AgentTool(agent=enterprise_context_agent),
+        LoadMemoryTool(),
+        FunctionTool(func=generate_memory),
     ],
 )
 
