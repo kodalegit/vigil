@@ -18,6 +18,7 @@ import logging
 import os
 import urllib.error
 import urllib.request
+from typing import Any, cast
 
 import google.auth
 from fastapi import FastAPI, HTTPException, Request
@@ -31,6 +32,7 @@ from vigil.app_utils.typing import Feedback
 from vigil.agents import VigilOrchestrator
 from vigil.backends import create_backends
 from vigil.backends.org_context import build_context_update_proposal
+from vigil.schemas import MonitoringInstruction
 from vigil.settings import get_settings
 from vigil.slack import (
     ONBOARDING_CALLBACK_ID,
@@ -216,11 +218,23 @@ async def handle_slack_command(request: Request) -> dict:
 
     payload = parse_slack_command_payload(body)
     org_id = slack_org_id(payload)
-    text = payload.get("text", "").strip().lower()
-    if text not in {"", "onboard", "setup"}:
+    command, argument = _parse_slack_command_text(payload.get("text", ""))
+    if command == "analyze":
+        if not argument:
+            return {
+                "response_type": "ephemeral",
+                "text": "Use `/vigil analyze <regulatory topic>` to start a Vigil analysis.",
+            }
+        asyncio.create_task(_process_slack_analysis_command(payload, argument))
         return {
             "response_type": "ephemeral",
-            "text": "Try `/vigil onboard` to set up Vigil for this workspace.",
+            "text": "Vigil is analyzing the regulatory update and will post an alert if it is actionable.",
+        }
+
+    if command not in {"", "onboard", "setup"}:
+        return {
+            "response_type": "ephemeral",
+            "text": "Try `/vigil onboard` to set up Vigil, or `/vigil analyze <topic>` to run analysis.",
         }
 
     if settings.slack_bot_token and payload.get("trigger_id"):
@@ -235,6 +249,71 @@ async def handle_slack_command(request: Request) -> dict:
         "text": "Set up Vigil for this workspace.",
         "blocks": build_onboarding_start_blocks(org_id),
     }
+
+
+def _parse_slack_command_text(text: str) -> tuple[str, str]:
+    stripped = text.strip()
+    if not stripped:
+        return "", ""
+    command, _, argument = stripped.partition(" ")
+    return command.lower(), argument.strip()
+
+
+async def _process_slack_analysis_command(payload: dict, query: str) -> None:
+    org_id = slack_org_id(payload)
+    user_id = slack_user_id(payload) or payload.get("user_id")
+    user_id = str(user_id) if user_id else None
+    try:
+        backends = create_backends()
+        decision = await VigilOrchestrator(backends=backends).analyze(
+            MonitoringInstruction(
+                query=query,
+                org_id=org_id,
+                user_id=user_id,
+            )
+        )
+    except Exception as error:
+        logger.exception("Slack analysis command failed")
+        await _post_slack_response(
+            payload,
+            f"Vigil could not complete the analysis: {error}",
+        )
+        _log_struct(
+            {
+                "event": "slack_analysis_command_failed",
+                "org_id": org_id,
+                "error": str(error),
+            },
+            severity="ERROR",
+        )
+        return
+
+    if decision.is_actionable:
+        await _post_slack_response(
+            payload,
+            (
+                "Vigil found an actionable regulatory impact and posted the review alert "
+                f"for `{decision.org_id}`."
+            ),
+        )
+    else:
+        await _post_slack_response(
+            payload,
+            (
+                "Vigil completed the analysis but did not find an actionable mapped impact. "
+                f"Classification: `{decision.classification}`."
+            ),
+        )
+    _log_struct(
+        {
+            "event": "slack_analysis_command_completed",
+            "org_id": decision.org_id,
+            "analysis_id": decision.analysis_id,
+            "classification": decision.classification,
+            "is_actionable": str(decision.is_actionable),
+        },
+        severity="INFO",
+    )
 
 
 async def _process_slack_interaction(payload: dict) -> None:
@@ -360,7 +439,8 @@ async def _process_slack_interaction(payload: dict) -> None:
 
 
 async def _handle_slack_view_submission(payload: dict) -> dict:
-    view = payload.get("view") if isinstance(payload.get("view"), dict) else {}
+    raw_view = payload.get("view")
+    view = cast(dict[str, Any], raw_view) if isinstance(raw_view, dict) else {}
     if not get_settings().slack_bot_token:
         return _slack_processing_view(
             title="Setup issue",
@@ -515,16 +595,16 @@ def _slack_processing_view(title: str, message: str) -> dict:
 
 def _slack_message_view(title: str, message: str, callback_id: str) -> dict:
     return {
-            "type": "modal",
-            "callback_id": callback_id,
-            "title": {"type": "plain_text", "text": title[:24]},
-            "close": {"type": "plain_text", "text": "Close"},
-            "blocks": [
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": message},
-                }
-            ],
+        "type": "modal",
+        "callback_id": callback_id,
+        "title": {"type": "plain_text", "text": title[:24]},
+        "close": {"type": "plain_text", "text": "Close"},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": message},
+            }
+        ],
     }
 
 
@@ -619,7 +699,9 @@ async def _open_follow_up_modal(payload: dict, *, analysis_id: str, org_id: str)
     view = build_follow_up_modal(
         analysis_id=analysis_id,
         org_id=org_id,
-        response_url=payload.get("response_url") if isinstance(payload.get("response_url"), str) else None,
+        response_url=payload.get("response_url")
+        if isinstance(payload.get("response_url"), str)
+        else None,
     )
     try:
         await asyncio.to_thread(client.views_open, trigger_id=trigger_id, view=view)

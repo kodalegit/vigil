@@ -1,4 +1,5 @@
 import importlib.metadata
+from typing import Any, cast
 
 from google.adk.workflow import Workflow
 
@@ -48,19 +49,22 @@ def test_root_agent_only_exposes_core_monitoring_tools() -> None:
         "load_memory",
         "generate_memory",
     }
-    assert not {
-        "get_current_profile",
-        "approve_impact_decision",
-        "propose_context_update",
-        "validate_context_update",
-        "commit_approved_context_update",
-        "search_org_memory",
-        "write_approved_memory",
-    } & tool_names
+    assert (
+        not {
+            "get_current_profile",
+            "approve_impact_decision",
+            "propose_context_update",
+            "validate_context_update",
+            "commit_approved_context_update",
+            "search_org_memory",
+            "write_approved_memory",
+        }
+        & tool_names
+    )
 
 
 def test_root_agent_instruction_matches_actual_orchestration_boundary() -> None:
-    instruction = root_agent.instruction
+    instruction = cast(str, root_agent.instruction)
 
     assert "source_monitoring_agent" in instruction
     assert "enterprise_context_agent" in instruction
@@ -274,7 +278,7 @@ async def test_generate_memory_tool_queues_session_generation_with_tool_context(
         memory_text="Reviewer prefers privacy updates batched unless high risk.",
         topic="notification_preferences",
         org_id="memory-bank-org",
-        tool_context=tool_context,  # type: ignore[arg-type]
+        tool_context=cast(Any, tool_context),
     )
 
     assert result["generated"] is True

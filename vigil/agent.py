@@ -99,9 +99,7 @@ async def analyze_regulatory_sources(
     return {
         "source_findings": [finding.model_dump(mode="json") for finding in findings],
         "org_context_summary": context_pack.instruction.org_context_summary,
-        "context_provenance": [
-            item.model_dump(mode="json") for item in context_pack.provenance
-        ],
+        "context_provenance": [item.model_dump(mode="json") for item in context_pack.provenance],
     }
 
 
@@ -141,17 +139,11 @@ async def map_enterprise_context(
         registry=backends.org_context,
         memory=backends.memory,
     ).compile(instruction)
-    findings = await backends.retrieval.search(
-        context_pack.instruction, parsed_source_findings
-    )
+    findings = await backends.retrieval.search(context_pack.instruction, parsed_source_findings)
     return {
-        "enterprise_findings": [
-            finding.model_dump(mode="json") for finding in findings
-        ],
+        "enterprise_findings": [finding.model_dump(mode="json") for finding in findings],
         "org_context_summary": context_pack.instruction.org_context_summary,
-        "context_provenance": [
-            item.model_dump(mode="json") for item in context_pack.provenance
-        ],
+        "context_provenance": [item.model_dump(mode="json") for item in context_pack.provenance],
     }
 
 
@@ -336,9 +328,7 @@ async def propose_context_update(
             freshness_days=source_freshness_days,
         )
         source_policy = current.source_policy.model_copy(deep=True)
-        sources = [
-            item for item in source_policy.allowlisted_sources if item.url != source.url
-        ]
+        sources = [item for item in source_policy.allowlisted_sources if item.url != source.url]
         sources.append(source)
         updates["source_policy"] = {
             "allowlisted_sources": [item.model_dump(mode="python") for item in sources]
@@ -418,9 +408,7 @@ async def validate_context_update(proposal_id: str) -> dict:
     return {"valid": not errors, "errors": errors, "proposal_id": proposal_id}
 
 
-async def commit_approved_context_update(
-    proposal_id: str, approved: bool = False
-) -> dict:
+async def commit_approved_context_update(proposal_id: str, approved: bool = False) -> dict:
     """Commit a human-approved org context proposal and its approved memories.
 
     Args:
@@ -450,9 +438,7 @@ async def commit_approved_context_update(
             if approved and not memory_proposal.approved:
                 memory_proposal = memory_proposal.model_copy(update={"approved": True})
             memories.append(
-                (await backends.memory.write_approved(memory_proposal)).model_dump(
-                    mode="json"
-                )
+                (await backends.memory.write_approved(memory_proposal)).model_dump(mode="json")
             )
         await backends.audit.record(
             AuditEvent(
@@ -629,9 +615,7 @@ def _retrieval_resource_updates(
     )
     return [
         {
-            "resource_id": _slug(
-                str(rag_corpus or drive_folder_id or gcs_uri or source_type)
-            ),
+            "resource_id": _slug(str(rag_corpus or drive_folder_id or gcs_uri or source_type)),
             "name": name,
             "source_type": source_type,
             "rag_corpus": rag_corpus,

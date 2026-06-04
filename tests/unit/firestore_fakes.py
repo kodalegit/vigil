@@ -20,10 +20,7 @@ class FakeFirestoreCollection:
         return FakeFirestoreQuery(self.documents).where(field_path, op_string, value)
 
     def stream(self):
-        return [
-            FakeFirestoreSnapshot(True, value)
-            for value in self.documents.values()
-        ]
+        return [FakeFirestoreSnapshot(True, value) for value in self.documents.values()]
 
 
 class FakeFirestoreQuery:
@@ -40,7 +37,10 @@ class FakeFirestoreQuery:
         return [
             FakeFirestoreSnapshot(True, value)
             for value in self.documents.values()
-            if all(_matches_filter(value, field_path, op_string, expected) for field_path, op_string, expected in self.filters)
+            if all(
+                _matches_filter(value, field_path, op_string, expected)
+                for field_path, op_string, expected in self.filters
+            )
         ]
 
 

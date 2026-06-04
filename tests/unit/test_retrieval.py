@@ -149,6 +149,48 @@ async def test_local_retrieval_mapping_rationale_names_matched_terms() -> None:
     assert any("Matches obligation terms" in mapping.reason for mapping in findings[0].mappings)
 
 
+async def test_local_retrieval_maps_sec_ai_cyber_obligations_to_us_control() -> None:
+    source_findings = [
+        SourceFinding(
+            summary="SEC AI and cybersecurity governance update",
+            obligations=[
+                RegulatoryObligation(
+                    id="obl-sec-ai-cyber",
+                    text=(
+                        "Maintain AI model governance, cybersecurity incident escalation, "
+                        "vendor oversight, and retained audit evidence for financial "
+                        "services controls."
+                    ),
+                    jurisdiction="United States",
+                    topics=["AI governance", "cybersecurity", "vendor oversight"],
+                    risk_level=RiskLevel.high,
+                    source_quote="SEC update describes AI and cyber governance controls.",
+                    confidence="high",
+                )
+            ],
+        )
+    ]
+
+    findings = await LocalRetrievalBackend(top_k=6).search(
+        MonitoringInstruction(
+            query=(
+                "SEC financial services update requiring AI model governance, "
+                "cybersecurity incident escalation, vendor oversight, and audit evidence"
+            ),
+            jurisdiction="United States",
+            domain="AI governance",
+        ),
+        source_findings,
+    )
+
+    assert findings
+    assert any(
+        chunk.document.title == "SEC AI and Cyber Governance Control"
+        for chunk in findings[0].chunks
+    )
+    assert findings[0].mappings
+
+
 def test_rag_corpus_prefers_instruction_over_global_setting() -> None:
     settings = SimpleNamespace(vigil_rag_corpus="global-corpus")
 

@@ -221,7 +221,9 @@ def _validate_context(context: OrgContext) -> list[str]:
         if resource.source_type == "gcs" and not resource.gcs_uri:
             errors.append(f"Retrieval resource {resource.resource_id} requires a GCS URI.")
         if resource.gcs_uri and not resource.gcs_uri.startswith("gs://"):
-            errors.append(f"Retrieval resource {resource.resource_id} GCS URI must start with gs://.")
+            errors.append(
+                f"Retrieval resource {resource.resource_id} GCS URI must start with gs://."
+            )
     return errors
 
 

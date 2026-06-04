@@ -34,7 +34,9 @@ async def test_context_compiler_applies_registry_defaults_and_source_allowlist()
     assert "Organization: Default Organization" in (pack.instruction.org_context_summary or "")
 
 
-async def test_context_compiler_uses_approved_matching_allowlisted_source_when_none_requested() -> None:
+async def test_context_compiler_uses_approved_matching_allowlisted_source_when_none_requested() -> (
+    None
+):
     registry = LocalOrgContextRegistry()
     proposal = await build_context_update_proposal(
         registry,

@@ -180,13 +180,12 @@ class RagEngineRetrievalBackend:
 
 def _effective_rag_corpus(
     instruction: MonitoringInstruction,
-    settings: Settings,
+    settings: Any,
 ) -> str:
     rag_corpus = instruction.rag_corpus or settings.vigil_rag_corpus
     if not rag_corpus:
         raise ValueError(
-            "RAG Engine retrieval requires an approved org retrieval resource "
-            "or VIGIL_RAG_CORPUS."
+            "RAG Engine retrieval requires an approved org retrieval resource or VIGIL_RAG_CORPUS."
         )
     return rag_corpus
 
@@ -219,6 +218,15 @@ def _metadata_filters(
 
 
 def _domain_from_source_findings(source_findings: list[SourceFinding]) -> str | None:
+    broad_domains = {
+        "ai governance",
+        "artificial intelligence",
+        "model risk",
+        "privacy",
+        "data protection",
+        "financial compliance",
+        "shipping compliance",
+    }
     ignored_topics = {
         "audit",
         "compliance",
@@ -232,7 +240,8 @@ def _domain_from_source_findings(source_findings: list[SourceFinding]) -> str | 
         for obligation in finding.obligations:
             for topic in obligation.topics:
                 normalized = topic.strip()
-                if normalized and normalized.lower() not in ignored_topics:
+                lowered = normalized.lower()
+                if lowered in broad_domains and lowered not in ignored_topics:
                     return normalized
     return None
 
@@ -271,11 +280,7 @@ def _is_ai_query(query: str, source_findings: list[SourceFinding]) -> bool:
     haystack = " ".join(
         [
             query,
-            *[
-                obligation.text
-                for finding in source_findings
-                for obligation in finding.obligations
-            ],
+            *[obligation.text for finding in source_findings for obligation in finding.obligations],
             *[
                 topic
                 for finding in source_findings

@@ -123,9 +123,7 @@ def test_parse_onboarding_submission_builds_context_updates() -> None:
         "user": {"id": "U123"},
         "view": {
             "callback_id": "vigil_onboarding",
-            "private_metadata": json.dumps(
-                {"org_id": "slack-team-T123", "channel_id": "CDEFAULT"}
-            ),
+            "private_metadata": json.dumps({"org_id": "slack-team-T123", "channel_id": "CDEFAULT"}),
             "state": {
                 "values": {
                     "display_name": {"value": {"value": "Acme AI"}},
@@ -133,13 +131,17 @@ def test_parse_onboarding_submission_builds_context_updates() -> None:
                     "products": {"value": {"value": "Credit model"}},
                     "business_model": {"value": {"value": "Regulated SaaS."}},
                     "jurisdictions": {"value": {"value": "European Union, United States"}},
-                    "risk_tolerance": {
-                        "value": {"selected_option": {"value": "low"}}
-                    },
+                    "risk_tolerance": {"value": {"selected_option": {"value": "low"}}},
                     "default_channel": {"value": {"selected_channel": "CLEGAL"}},
                     "reviewers": {"value": {"selected_users": ["U123", "U456"]}},
-                    "source_name": {"value": {"value": "EU AI Act briefing"}},
-                    "source_url": {"value": {"value": "https://artificialintelligenceact.eu/"}},
+                    "source_name": {"value": {"value": "EU AI Act briefing\nOfficial Journal"}},
+                    "source_url": {
+                        "value": {
+                            "value": (
+                                "https://artificialintelligenceact.eu/\nhttps://eur-lex.europa.eu/"
+                            )
+                        }
+                    },
                     "source_domains": {"value": {"value": "AI governance"}},
                     "source_regulators": {"value": {"value": "European Union"}},
                     "monitoring_query": {
@@ -150,9 +152,7 @@ def test_parse_onboarding_submission_builds_context_updates() -> None:
                         "value": {"selected_option": {"value": "rag_engine"}}
                     },
                     "rag_corpus": {
-                        "value": {
-                            "value": "projects/acme/locations/us-central1/ragCorpora/123"
-                        }
+                        "value": {"value": "projects/acme/locations/us-central1/ragCorpora/123"}
                     },
                 }
             },
@@ -168,8 +168,21 @@ def test_parse_onboarding_submission_builds_context_updates() -> None:
     assert updates["profile"]["risk_tolerance"] == "low"
     assert updates["slack_preferences"]["default_channel"] == "CLEGAL"
     assert updates["slack_preferences"]["reviewer_user_ids"] == ["U123", "U456"]
-    assert updates["source_policy"]["allowlisted_sources"][0]["source_id"] == "eu-ai-act-briefing"
+    sources = updates["source_policy"]["allowlisted_sources"]
+    assert [source["source_id"] for source in sources] == [
+        "eu-ai-act-briefing",
+        "official-journal",
+    ]
+    assert [source["url"] for source in sources] == [
+        "https://artificialintelligenceact.eu/",
+        "https://eur-lex.europa.eu/",
+    ]
+    assert sources[0]["freshness_days"] is None
     assert updates["monitoring_profiles"][0]["enabled"] is True
+    assert updates["monitoring_profiles"][0]["source_ids"] == [
+        "eu-ai-act-briefing",
+        "official-journal",
+    ]
     assert updates["retrieval_resources"][0]["source_type"] == "rag_engine"
     assert updates["retrieval_resources"][0]["rag_corpus"] == (
         "projects/acme/locations/us-central1/ragCorpora/123"

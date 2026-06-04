@@ -339,10 +339,7 @@ def test_fallback_obligation_extraction_handles_general_enterprise_domains() -> 
     assert "obl-aml-transaction-monitoring" in obligation_ids
     assert "obl-third-party-assurance" in obligation_ids
     assert "obl-workplace-incident-reporting" in obligation_ids
-    assert all(
-        obligation.jurisdiction == "United States"
-        for obligation in extraction.obligations
-    )
+    assert all(obligation.jurisdiction == "United States" for obligation in extraction.obligations)
     assert all(
         obligation.source_url == "https://official.example/general-update"
         for obligation in extraction.obligations

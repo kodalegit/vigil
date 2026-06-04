@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs
 
 from vigil.schemas import ContextUpdateProposal
@@ -234,8 +234,19 @@ def build_onboarding_modal(
                 "label": {"type": "plain_text", "text": "Reviewers"},
                 "element": {"type": "multi_users_select", "action_id": "value"},
             },
-            _plain_input("source_name", "Trusted source name", "Primary regulator updates"),
-            _plain_input("source_url", "Trusted source URL", "https://www.regulator.example/updates"),
+            _plain_input(
+                "source_name",
+                "Trusted source names",
+                "SEC press releases, SEC cybersecurity rules",
+                optional=True,
+                multiline=True,
+            ),
+            _plain_input(
+                "source_url",
+                "Trusted source URLs",
+                "https://www.sec.gov/newsroom/press-releases\nhttps://www.sec.gov/rules-regulations",
+                multiline=True,
+            ),
             _plain_input("source_domains", "Source domains", "privacy, financial compliance"),
             _plain_input("source_regulators", "Regulators", "Primary regulator"),
             _plain_input(
@@ -283,7 +294,8 @@ def build_onboarding_modal(
 
 
 def parse_onboarding_submission(payload: dict[str, Any]) -> dict[str, Any]:
-    view = payload.get("view") if isinstance(payload.get("view"), dict) else {}
+    raw_view = payload.get("view")
+    view = cast(dict[str, Any], raw_view) if isinstance(raw_view, dict) else {}
     metadata = _json_dict(view.get("private_metadata"))
     values = view.get("state", {}).get("values", {})
     if not isinstance(values, dict):
@@ -344,23 +356,16 @@ def onboarding_context_updates(submission: dict[str, Any]) -> dict[str, Any]:
     if slack_updates:
         updates["slack_preferences"] = slack_updates
 
-    source_name = submission.get("source_name")
-    source_url = submission.get("source_url")
-    source_id = _slug(source_name) if isinstance(source_name, str) else "trusted-source"
-    if source_name and source_url:
+    source_entries = _source_entries(
+        names=submission.get("source_name"),
+        urls=submission.get("source_url"),
+        jurisdictions=submission.get("source_jurisdictions"),
+        domains=submission.get("source_domains"),
+        regulators=submission.get("source_regulators"),
+    )
+    if source_entries:
         updates["source_policy"] = {
-            "allowlisted_sources": [
-                {
-                    "source_id": source_id,
-                    "name": source_name,
-                    "url": source_url,
-                    "jurisdictions": _csv(submission.get("source_jurisdictions")),
-                    "domains": _csv(submission.get("source_domains")),
-                    "regulators": _csv(submission.get("source_regulators")),
-                    "trust_level": "trusted",
-                    "freshness_days": 30,
-                }
-            ],
+            "allowlisted_sources": source_entries,
             "require_allowlist": True,
         }
 
@@ -375,7 +380,7 @@ def onboarding_context_updates(submission: dict[str, Any]) -> dict[str, Any]:
                 "domains": _csv(submission.get("source_domains")),
                 "cadence": submission.get("monitoring_cadence") or "weekly",
                 "threshold": "medium",
-                "source_ids": [source_id] if source_name and source_url else [],
+                "source_ids": [source["source_id"] for source in source_entries],
                 "enabled": True,
             }
         ]
@@ -436,7 +441,8 @@ def onboarding_confirmation_metadata(proposal: ContextUpdateProposal) -> str:
 
 
 def onboarding_confirmation_ids(payload: dict[str, Any]) -> dict[str, str]:
-    view = payload.get("view") if isinstance(payload.get("view"), dict) else {}
+    raw_view = payload.get("view")
+    view = cast(dict[str, Any], raw_view) if isinstance(raw_view, dict) else {}
     metadata = _json_dict(view.get("private_metadata"))
     return {
         "proposal_id": str(metadata.get("proposal_id") or ""),
@@ -488,7 +494,8 @@ def build_follow_up_modal(
 
 
 def parse_follow_up_submission(payload: dict[str, Any]) -> dict[str, str]:
-    view = payload.get("view") if isinstance(payload.get("view"), dict) else {}
+    raw_view = payload.get("view")
+    view = cast(dict[str, Any], raw_view) if isinstance(raw_view, dict) else {}
     metadata = _json_dict(view.get("private_metadata"))
     values = view.get("state", {}).get("values", {})
     if not isinstance(values, dict):
@@ -509,8 +516,7 @@ def build_follow_up_complete_blocks(analysis_id: str) -> list[dict[str, Any]]:
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "*Follow-up recorded.*\n"
-                    f"Decision `{analysis_id}` remains pending review."
+                    f"*Follow-up recorded.*\nDecision `{analysis_id}` remains pending review."
                 ),
             },
         }
@@ -608,6 +614,50 @@ def _csv(value: Any) -> list[str]:
     if not isinstance(value, str):
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _source_entries(
+    *,
+    names: Any,
+    urls: Any,
+    jurisdictions: Any,
+    domains: Any,
+    regulators: Any,
+) -> list[dict[str, Any]]:
+    source_urls = _split_lines_or_csv(urls)
+    source_names = _split_lines_or_csv(names)
+    entries: list[dict[str, Any]] = []
+    for index, url in enumerate(source_urls):
+        name = source_names[index] if index < len(source_names) else _source_name_from_url(url)
+        source_id_base = _slug(name) or f"trusted-source-{index + 1}"
+        source_id = source_id_base
+        if any(entry["source_id"] == source_id for entry in entries):
+            source_id = f"{source_id_base}-{index + 1}"
+        entries.append(
+            {
+                "source_id": source_id,
+                "name": name,
+                "url": url,
+                "jurisdictions": _csv(jurisdictions),
+                "domains": _csv(domains),
+                "regulators": _csv(regulators),
+                "trust_level": "trusted",
+                "freshness_days": None,
+            }
+        )
+    return entries
+
+
+def _split_lines_or_csv(value: Any) -> list[str]:
+    if not isinstance(value, str):
+        return []
+    normalized = value.replace("\n", ",")
+    return [item.strip() for item in normalized.split(",") if item.strip()]
+
+
+def _source_name_from_url(url: str) -> str:
+    without_scheme = url.removeprefix("https://").removeprefix("http://")
+    return without_scheme.split("/", 1)[0] or "Trusted source"
 
 
 def _csv_or_list(value: Any) -> list[str]:

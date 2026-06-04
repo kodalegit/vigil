@@ -205,10 +205,7 @@ def _mock_domain(topic: str) -> str:
         for term in {"privacy", "personal data", "customer data", "data transfer"}
     ):
         return "privacy"
-    if any(
-        term in lower_topic
-        for term in {"aml", "transaction monitoring", "financial crime"}
-    ):
+    if any(term in lower_topic for term in {"aml", "transaction monitoring", "financial crime"}):
         return "financial crime compliance"
     if any(term in lower_topic for term in {"vendor", "third-party", "procurement"}):
         return "vendor risk"
