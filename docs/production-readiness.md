@@ -107,8 +107,7 @@ and a five-minute replay window. The current `/slack/interactions` endpoint veri
 callbacks and wires approve-ticket actions into `record_approval` through the decision
 store. False-positive callbacks record an approved false-positive obligation in the
 organization context registry so future runs can suppress the same obligation. `SlackActionBackend`
-can post Block Kit alerts through Slack Web API when `VIGIL_ACTION_BACKEND=slack`; this
-still needs a real workspace smoke test.
+posts Block Kit alerts through Slack Web API when `VIGIL_ACTION_BACKEND=slack`.
 
 Slack onboarding now uses slash commands plus modal submissions. The app derives
 `org_id` from Slack Enterprise ID first, then team ID, and writes approved profile,
@@ -156,7 +155,7 @@ win, so local overrides remain easy.
 
 1. Add Gemini web source robustness around duplicate findings across monitoring runs and mocked grounded-search/extraction failures.
 2. Add citation-quality ADK eval coverage that penalizes hallucinated owners or documents.
-3. Add Firestore live smoke test and real Slack workspace smoke test.
+3. Keep Firestore and Slack smoke tests repeatable for every demo deployment.
 4. Add Agent Runtime scaffold and verify deploy in a dev project.
 5. Smoke test Agent Platform Sessions and Google Memory Bank once Agent Runtime identifiers and IAM are available.
 

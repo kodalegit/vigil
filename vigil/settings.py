@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     vigil_firestore_collection_prefix: str = "vigil"
     vigil_source_backend: Literal["mock", "gemini_web"] = "mock"
     vigil_action_backend: Literal["mock", "slack"] = "mock"
+    vigil_adk_web_ui: bool = True
     vigil_retrieval_top_k: int = 6
     vigil_retrieval_min_score: float = 0.08
     vigil_rag_corpus: str | None = None

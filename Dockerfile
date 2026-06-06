@@ -22,7 +22,7 @@ COPY ./pyproject.toml ./README.md ./uv.lock* ./
 
 COPY ./vigil ./vigil
 
-RUN uv sync --frozen
+RUN uv sync --frozen --extra api
 
 ARG COMMIT_SHA=""
 ENV COMMIT_SHA=${COMMIT_SHA}

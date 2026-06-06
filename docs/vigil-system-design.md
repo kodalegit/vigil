@@ -419,16 +419,18 @@ Use a retrieval interface with two backends:
    - Gemini embeddings and RAG Engine retrieval configuration where available.
    - Drive MCP only as an auxiliary file access and refresh tool.
 
-### 8.2 MVP Production Slice
+### 8.2 Reviewer Build
 
-The next credible hackathon slice is:
+The current hackathon reviewer build is:
 
-1. Gemini web search grounding for regulatory source monitoring.
-2. Local indexed corpus for repeatable enterprise retrieval demos.
-3. RAG Engine ingestion helper for Google Drive folders/files.
-4. Mock Slack alert with approval buttons.
-5. Audit events for analysis start/completion and mock external actions.
-6. ADK evals for the EU AI Act happy path, irrelevant updates, ambiguous sources, and citation quality.
+1. Cloud Run-hosted FastAPI service for Slack slash commands and interactions.
+2. Mock source backend by default for repeatable, low-cost reviewer testing.
+3. Optional Gemini web search grounding for supervised live-source monitoring.
+4. Local indexed corpus for repeatable enterprise retrieval demos.
+5. RAG Engine backend and import helper for managed Drive or Cloud Storage retrieval.
+6. Real Slack onboarding, modal review, alert posting, approval, false-positive, and follow-up callbacks.
+7. Firestore-backed organization context, proposal, decision, and audit storage.
+8. ADK evals for the EU AI Act happy path, irrelevant updates, ambiguous sources, enterprise-domain scenarios, and citation quality.
 
 The agent code should call the retrieval interface, not a specific backend directly.
 
@@ -517,9 +519,13 @@ Use `.env.example` to document required variables without exposing secrets.
 
 Run locally using `uv`, local env variables, mock tools, and local retrieval.
 
-### 11.2 Cloud Run Transitional Deployment
+### 11.2 Cloud Run Reviewer Deployment
 
-If Agent Runtime setup slows development, deploy the HTTP service to Cloud Run while preserving Agent Runtime-compatible agent code.
+The public hackathon reviewer build runs the Slack/API service on Cloud Run while
+preserving Agent Runtime-compatible ADK agent code. This keeps testing simple and
+cost-controlled: mock source monitoring, local retrieval, Firestore persistence,
+Slack actions, Secret Manager credentials, max scale of one instance, and the ADK
+dev UI disabled.
 
 ### 11.3 Agent Runtime Production Deployment
 
@@ -547,13 +553,13 @@ The orchestrator must enforce these rules:
 - Respect enterprise document permissions.
 - Record audit events for decisions and external actions.
 
-## 13. Simplified MVP Architecture
+## 13. Simplified Reviewer Architecture
 
-For the MVP, demonstrate a full regulatory impact loop for one regulatory domain and a small internal policy corpus:
+For the reviewer build, demonstrate a full regulatory impact loop for one regulatory domain and a small internal policy corpus:
 
-1. A new sample rule or guidance document is ingested from a configured source.
+1. A mock or configured regulatory source emits a new update.
 2. Vigil extracts obligations and citations.
-3. Vigil searches 10-20 mocked internal policies, SOPs, controls, and meeting notes.
+3. Vigil searches internal policies, SOPs, controls, and meeting notes through the retrieval interface.
 4. Vigil maps obligations to affected internal artifacts and owners.
 5. Vigil classifies the event as actionable, informational, or irrelevant.
 6. Vigil posts a Slack alert with mapped policies and suggested remediation.
@@ -578,6 +584,6 @@ Recommended hackathon constraints:
 - Use one coherent domain and regulator for the demo.
 - Configure 5-10 monitored source URLs or static sample documents.
 - Start with a simple diff or new-file trigger instead of broad horizon scanning.
-- Use local keyword search or lightweight embeddings before cloud retrieval.
+- Use local retrieval for the public demo, with RAG Engine as the production retrieval path.
 - Use mock ticket storage instead of Jira or ServiceNow.
 - Over-invest in reliable scenario tests and clear Slack output.

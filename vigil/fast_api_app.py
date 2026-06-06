@@ -79,6 +79,7 @@ allow_origins = os.getenv("ALLOW_ORIGINS", "").split(",") if os.getenv("ALLOW_OR
 
 # Artifact bucket for ADK (created by Terraform, passed via env var)
 logs_bucket_name = os.environ.get("LOGS_BUCKET_NAME")
+settings = get_settings()
 
 AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # In-memory session configuration - no persistent storage
@@ -88,7 +89,7 @@ artifact_service_uri = f"gs://{logs_bucket_name}" if logs_bucket_name else None
 
 app: FastAPI = get_fast_api_app(
     agents_dir=AGENT_DIR,
-    web=True,
+    web=settings.vigil_adk_web_ui,
     artifact_service_uri=artifact_service_uri,
     allow_origins=allow_origins,
     session_service_uri=session_service_uri,

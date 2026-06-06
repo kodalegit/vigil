@@ -308,38 +308,39 @@ agents-cli eval run --evalset tests/eval/evalsets/retrieval_quality.evalset.json
 agents-cli eval run --evalset tests/eval/evalsets/general_enterprise.evalset.json --config tests/eval/general_enterprise_config.json
 ```
 
-Latest known result: 54 unit/integration tests and lint pass on ADK 2.1.0. The basic and retrieval-quality ADK evals last passed before the freshness guardrail slice; the most recent rerun hung on the first Vertex model call and was interrupted before producing a result.
+Latest known result: lint passes and the unit suite has passed with capture disabled. The reviewer Cloud Run deployment has also passed Slack endpoint smoke checks.
 
 Known tooling note:
 
 - `agents-cli` reported a CLI/skills version mismatch. The CLI is newer than the installed local Google agent skills. Run `agents-cli update` before serious deployment or scaffold work.
 
-## 4. Current MVP Slice
+## 4. Current Reviewer Slice
 
-This is the slice we should finish before adding more cloud complexity:
+This is the slice prepared for public reviewer testing:
 
 ```text
-User instruction
+Slack command or user instruction
+  -> FastAPI Slack endpoint
   -> ADK orchestrator
   -> source_monitoring_agent
       -> mock or Gemini web source backend
       -> structured obligations with citations
   -> enterprise_context_agent
-      -> local indexed corpus retrieval
+      -> local indexed corpus retrieval or RAG Engine backend
       -> obligation-to-artifact mappings
   -> orchestrator final decision
       -> classification
       -> recommended actions
-      -> mock Slack alert payload
+      -> Slack alert with approval/follow-up actions
       -> audit narrative
       -> approval required before ticket
 ```
 
-The demo should be reliable with mock source + local corpus, then optionally show Gemini web source mode if credentials and network behavior are stable.
+The public demo is reliable with mock source + local corpus. Gemini web source mode and RAG Engine retrieval remain available for supervised production-like testing.
 
-## 5. Immediate Phase: Tighten The Local Impact Loop
+## 5. Phase: Tighten The Local Impact Loop
 
-Status: in progress
+Status: implemented for the reviewer build
 
 Goal:
 
@@ -474,7 +475,7 @@ Exit criteria:
 
 ## 9. Phase: Slack, Approvals, Tickets, And Audit
 
-Status: partially done
+Status: implemented for the reviewer build
 
 Goal:
 
@@ -483,13 +484,13 @@ Turn impact analysis into an operational workflow.
 Tasks:
 
 - Add Slack app configuration docs.
-- Implement real Slack posting behind `ActionBackend`. (Implemented behind `VIGIL_ACTION_BACKEND=slack`; needs workspace smoke test.)
-- Add Slack signing-secret verification. (Implemented for interactive callback requests.)
-- Add approval callback endpoint. (Implemented for approve-ticket callbacks backed by local decision store.)
+- Implement real Slack posting behind `ActionBackend`. (Implemented behind `VIGIL_ACTION_BACKEND=slack`.)
+- Add Slack signing-secret verification. (Implemented for slash commands and interactive callback requests.)
+- Add approval callback endpoint. (Implemented for approve-ticket callbacks backed by the decision store.)
 - Wire Slack approval callbacks into the idempotent approval path. (Implemented for approve-ticket callbacks.)
-- Add false-positive handling and audit event.
+- Add false-positive handling and audit event. (Implemented.)
 - Ensure Slack payloads contain only safe snippets and permission-safe links.
-- Add tests for Slack callback approval wiring once endpoint-level dependency injection is available.
+- Add tests for Slack callback approval wiring. (Implemented for command and interaction paths.)
 
 Exit criteria:
 
