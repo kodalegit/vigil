@@ -1,176 +1,150 @@
 # Vigil
 
-Vigil is an autonomous regulatory impact assistant that watches trusted legal sources, finds the internal policies and artifacts they affect, and pushes concise, evidence-backed alerts and draft remediation actions into Slack for human approval.
+Vigil is an autonomous regulatory impact agent for compliance teams. It watches trusted regulatory sources, extracts obligations, maps them to internal policies and controls, and pushes concise, evidence-backed Slack alerts for human review and approval.
 
-Built for the Gemini Enterprise Agent Platform, Vigil turns regulatory change into a traceable operating workflow: monitor sources, extract obligations, retrieve enterprise context, classify impact, notify reviewers, capture approvals, and preserve the evidence trail.
+Built for the Gemini Enterprise Agent Platform, Vigil turns regulatory change into a traceable operating workflow: monitor sources, retrieve enterprise context, classify impact, route approvals, and preserve the audit trail.
 
-## Problem
+## Why Vigil
 
-Yesterday, a new AI governance guideline was published. Today, the compliance lead is manually reading it, searching through Drive to see which policies are affected, and emailing stakeholders. Next week, they may need to prove to auditors what changed, how the company assessed impact, who approved the response, and what remediation was completed.
+Lean legal and compliance teams are overwhelmed by regulatory noise. A new rule or supervisory update is only useful when the team can quickly answer:
 
-Lean in-house legal and compliance teams do not just need more legal summaries. They need help with the full regulatory change management loop:
+- What changed?
+- Does it apply to our products, jurisdictions, and risk profile?
+- Which internal policies, controls, SOPs, or owners are affected?
+- What should a human reviewer approve next?
+- Can we prove later how the decision was made?
 
-1. Detect a relevant regulatory change.
-2. Understand what changed and which obligations follow.
-3. Map those obligations to internal policies, controls, SOPs, owners, and business units.
-4. Decide whether the change is actionable, informational, or irrelevant.
-5. Coordinate remediation without losing the evidence trail.
+Vigil focuses on the hard middle of regulatory change management: obligation-to-internal-artifact mapping and Slack-first remediation orchestration. It is not a generic legal summarizer, and it does not present output as legal advice.
 
-Vigil is focused on the under-served middle of that workflow: obligation-to-internal-artifact mapping and Slack-first remediation orchestration.
+## What It Does
 
-## Target User
-
-Vigil is designed for an in-house legal or compliance lead at a mid-size fintech or SaaS company handling regulated data.
-
-Their environment usually includes:
-
-- Google Workspace for policies, SOPs, controls, meeting notes, and evidence.
-- Slack as the main operational workflow surface.
-- Basic ticketing such as Jira, ServiceNow, or an internal equivalent.
-- A small team that cannot manually review every regulatory update in depth.
-
-## Regulatory Impact Loop
-
-Vigil automates a focused loop:
+Vigil automates a focused regulatory impact loop:
 
 ```text
 Detect change
   -> Extract obligations
-  -> Map to internal policies and controls
+  -> Retrieve internal context
+  -> Map obligations to policies and controls
   -> Classify impact
   -> Alert in Slack
   -> Approve remediation
-  -> Create ticket and audit log
+  -> Record ticket and audit history
 ```
 
-The system is intentionally opinionated about impact. It should not merely summarize a law; it should explain what changed, why it matters to the organization, which internal artifacts appear affected, and what the human reviewer should do next.
+In the reviewer demo, Vigil can:
 
-## Demo Workflow
+- onboard an organization from Slack, including jurisdictions, risk tolerance, review channel, trusted sources, reviewers, and retrieval resources
+- analyze a regulatory update from a deterministic mock source or live Gemini web search mode
+- retrieve matching internal controls from a local corpus, with Vertex AI RAG Engine support available by configuration
+- classify findings as actionable, informational, irrelevant, or ambiguous
+- post Slack alerts with affected artifacts, evidence snippets, suggested actions, approval buttons, follow-up handling, and false-positive capture
+- persist organization context and decisions in Firestore
 
-For the hackathon demo, Vigil demonstrates a full regulatory impact loop for a configured regulatory domain and a small internal control corpus.
+## Architecture
 
-1. A trusted regulatory source or mock source emits a new update.
-2. Vigil extracts structured obligations with citations.
-3. Vigil searches internal policies, SOPs, controls, and meeting notes using local retrieval or Vertex AI RAG Engine.
-4. Vigil maps obligations to affected internal artifacts and owners.
-5. Vigil classifies the event as actionable, informational, or irrelevant.
-6. Vigil posts a structured Slack alert with evidence and suggested remediation.
-7. On human approval, Vigil creates a mock ticket and records an audit event.
+Vigil uses a deliberately small agent architecture so final business judgment stays in one place.
+
+- `VigilOrchestrator` owns the end-to-end decision: it loads organization context, session state, memory, and approved retrieval resources; calls specialist agents; merges evidence; classifies impact; writes the Slack alert; and gates remediation behind human approval.
+- `SourceMonitoringAgent` gathers regulatory evidence from trusted or mock sources and returns structured obligations with citations, dates, risk signals, and uncertainty.
+- `EnterpriseContextAgent` maps obligations to internal policies, controls, SOPs, snippets, owners, and business units using local retrieval or Vertex AI RAG Engine.
+
+The subagents do bounded evidence gathering. The orchestrator makes the final impact decision, keeps the output approval-oriented, and records the audit trail.
+
+See [docs/architecture-diagram.md](docs/architecture-diagram.md) for a GitHub-rendered architecture diagram.  
+See [docs/vigil-system-design.md](docs/vigil-system-design.md) for the detailed system design.
+
+## Gemini Enterprise Agent Platform
+
+Vigil is designed around Gemini Enterprise Agent Platform production primitives:
+
+- **Agent Runtime ready:** ADK-compatible agent code can be deployed to managed Agent Runtime. The public reviewer build currently runs the Slack API on Cloud Run for simple testing.
+- **RAG Engine support:** `VIGIL_RETRIEVAL_BACKEND=rag_engine` can point approved organization context at an existing Vertex AI RAG Engine corpus.
+- **Agent Platform Sessions:** session state is reserved for per-investigation context such as the current regulatory topic, selected evidence, and follow-up notes.
+- **Memory Bank support:** `VIGIL_MEMORY_BACKEND=google` can use Agent Platform Memory Bank for durable reviewer preferences and reusable monitoring context. Memory writes are approval-gated.
+- **Observability path:** the API is compatible with Cloud Logging, Cloud Trace, and ADK/Agent Platform traces for production debugging.
+
+## Reviewer Demo
+
+The deployed reviewer build is intentionally low-cost and repeatable:
+
+- Slack is the primary interface for onboarding, analysis, alerts, approvals, and follow-up.
+- Cloud Run serves the Slack/API app.
+- Firestore stores organization context and impact decisions.
+- Secret Manager stores Slack credentials.
+- The source backend defaults to `mock` so public testing does not spend live web-search budget.
+- The retrieval backend defaults to the local corpus, with RAG Engine available through configuration.
+- The public fallback is the FastAPI `/docs` page; the ADK dev UI is disabled in the public build.
+
+Tester instructions live in [docs/demo-testing-access.md](docs/demo-testing-access.md).
 
 ## Example Slack Alert
 
 ```text
-New AML rule impacts Policy P-001
+New AI governance update impacts Model Risk Control Register
 
 Classification: Actionable
 Priority: High
 
 What changed:
-- Reporting frequency appears to increase for covered transaction reviews.
-- The effective date is within the next quarter.
+- Covered AI systems require documented human oversight.
+- Vendor-managed AI workflows require retained audit evidence.
 
 Why it matters:
-- Policy P-001 currently references the older reporting cadence.
-- The AML Operations SOP assigns review ownership to the compliance operations team.
+- The model risk control register already governs high-impact AI systems.
+- Existing vendor review controls need explicit evidence retention.
 
 Affected artifacts:
-- Policy P-001, Section 3.2, owner: Compliance Lead
-- AML Operations SOP, Section 4, owner: Compliance Ops
+- Model Risk Control Register, owner: Compliance Lead
+- AI Incident Response SOP, owner: Trust & Safety
 
 Suggested actions:
-- Review and update Policy P-001 Section 3.2.
-- Confirm whether AML Operations SOP Section 4 needs an owner or cadence update.
-- Create an evidence note linking the source rule, affected sections, and approval.
+- Review affected controls and confirm ownership.
+- Create an evidence note linking the source update and internal control sections.
+- Open a remediation ticket after reviewer approval.
 
 Buttons:
 [Approve & create ticket] [Ask follow-up] [Mark as false positive]
 ```
 
-## Architecture
+## Technology
 
-Vigil uses a deliberately simple agent architecture:
+- Google ADK and Gemini
+- Gemini web grounding/search for supervised live source monitoring
+- Gemini Enterprise Agent Platform design path: Agent Runtime, Sessions, Memory Bank, RAG Engine
+- Cloud Run, Firestore, Secret Manager, Cloud Build, Artifact Registry
+- FastAPI and Slack SDK
+- Local corpus retrieval with managed RAG Engine support
+- ADK evals and pytest coverage for source, retrieval, Slack, and orchestration behavior
 
-- `VigilOrchestrator` owns product judgment, triage, Slack output, approval, ticketing, and audit logging.
-- `SourceMonitoringAgent` watches trusted sources and extracts changed obligations.
-- `EnterpriseContextAgent` searches internal artifacts and maps obligations to policies, controls, snippets, owners, and business units.
+## Safety And Governance
 
-See [`docs/vigil-system-design.md`](docs/vigil-system-design.md) for the detailed system design.
-See [`docs/architecture-diagram.md`](docs/architecture-diagram.md) for a GitHub-rendered architecture diagram.
+Vigil is designed for human-in-the-loop compliance operations:
 
-## Gemini Enterprise Agent Platform
+- remediation actions require human approval
+- source citations and internal snippets are preserved for review
+- ambiguous or low-confidence findings can be downgraded instead of alerted
+- false positives can be captured as reusable organization context
+- Slack callbacks verify request signatures and recover decision state from storage
+- durable memory is reserved for approved preferences and reusable context, not unverified evidence
 
-Vigil is designed around the production building blocks of Gemini Enterprise Agent Platform Agent Runtime:
+## Local Development
 
-- **Agent Runtime ready:** the ADK agent code can be deployed to managed Agent Runtime, while the hackathon reviewer build runs the Slack API on Cloud Run for simple public testing.
-- **RAG Engine support:** `VIGIL_RETRIEVAL_BACKEND=rag_engine` lets approved organization context point at an existing Vertex AI RAG Engine corpus. Slack onboarding captures RAG corpus, Drive folder, or Cloud Storage source metadata.
-- **Agent Platform Sessions:** session state is reserved for per-investigation context such as current regulatory topic, selected evidence, and follow-up notes.
-- **Memory Bank support:** `VIGIL_MEMORY_BACKEND=google` can use Agent Platform Memory Bank for durable reviewer preferences and reusable monitoring context. Memory writes are approval-gated.
-- **Observability path:** the API is compatible with Cloud Logging, Cloud Trace, and ADK/Agent Platform traces for production debugging.
+Install dependencies with `uv`, configure `.env`, and run the API locally:
 
-## Slack Onboarding
-
-Slack is the first setup surface for organization context. The local flow supports:
-
-- `/vigil onboard`, `/vigil setup`, `/onboard`, or `/setup` through `/slack/commands`
-- interactive buttons and modal submissions through `/slack/interactions`
-- org identity derived from Slack Enterprise ID first, then workspace team ID
-- approved setup persisted through the existing organization context registry
-- optional enterprise retrieval resource capture for existing RAG corpus, Drive folder ID, or GCS URI
-
-For local ngrok testing:
-
-1. Set `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and `VIGIL_STORAGE_BACKEND=firestore` or `local`.
-2. Run the API with `bash -ic 'uv run uvicorn vigil.fast_api_app:app --reload --host 0.0.0.0 --port 8000'`.
-3. Point the Slack slash command request URL to `https://<ngrok-host>/slack/commands`.
-4. Point the Slack interactivity request URL to `https://<ngrok-host>/slack/interactions`.
-5. Run `/vigil onboard`, `/onboard`, or `/setup` in Slack, fill the modal, review the diff, and approve setup.
-
-Slack modal submissions are acknowledged immediately and registry writes happen in
-the background. If Slack shows "We had some trouble connecting," check the uvicorn
-logs and ngrok request details for `/slack/interactions`; it usually means the
-server did not respond within Slack's interactive callback timeout or the signing
-secret rejected the request.
-
-For deployed environments, direct Slack/API key env vars can be replaced with
-Secret Manager references:
-
-```text
-SLACK_BOT_TOKEN_SECRET=projects/<project>/secrets/<name>/versions/latest
-SLACK_SIGNING_SECRET_SECRET=projects/<project>/secrets/<name>/versions/latest
-GOOGLE_API_KEY_SECRET=projects/<project>/secrets/<name>/versions/latest
+```bash
+uv run uvicorn vigil.fast_api_app:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Bare secret IDs also work when `GOOGLE_CLOUD_PROJECT` is set.
+For Slack/ngrok testing, point Slack to:
 
-## Design Principles
+```text
+https://<ngrok-host>/slack/commands
+https://<ngrok-host>/slack/interactions
+```
 
-- Keep the architecture simple: one orchestrator, a small number of bounded subagents, and mockable tools.
-- Treat obligations and internal mappings as first-class structured outputs.
-- Reduce alert fatigue by classifying events as actionable, informational, or irrelevant.
-- Make Slack the front door for review and approval.
-- Require human approval before creating remediation actions.
-- Preserve source citations, internal snippets, decisions, approvals, and ticket creation in an audit trail.
-- Avoid presenting outputs as final legal advice.
+Useful checks:
 
-## Current Reviewer Build
-
-The deployed reviewer build is intentionally low-cost and repeatable:
-
-- Slack is the primary interface for onboarding, analysis, alerts, approvals, and follow-up.
-- Firestore stores organization context and impact decisions.
-- The source backend defaults to `mock` so public testing does not spend live web-search budget.
-- The retrieval backend defaults to the local corpus, with RAG Engine support available through configuration.
-- The public fallback is the FastAPI `/docs` page; the ADK dev UI is disabled in the public build.
-
-## Hackathon Scope
-
-Vigil should start narrow and credible:
-
-- One coherent regulatory domain.
-- Five to ten configured source documents or URLs.
-- Ten to twenty synthetic internal policies, SOPs, controls, and meeting notes.
-- Local retrieval for the public demo, plus managed Vertex AI RAG Engine support for production retrieval.
-- Mock ticket creation instead of a full Jira or ServiceNow integration.
-- Scenario tests that prove consistent outputs for a few predefined regulatory updates.
-
-Future production hardening can add continuous source scheduling, richer Drive ingestion, real Jira or ServiceNow ticketing, permission-aware document previews, Agent Runtime deployment, Agent Platform Sessions, Memory Bank, and production observability.
+```bash
+agents-cli lint
+uv run --extra dev pytest -s tests/unit
+```
